@@ -18,6 +18,7 @@
         <local:StepStateToBadgeTextConverter x:Key="BadgeTextConv"/>
         <local:StepStateToTitleForegroundConverter x:Key="TitleFgConv"/>
         <local:InvertBoolConverter x:Key="InvertBoolConv"/>
+        <local:BoolToVisibilityInvertedConverter x:Key="BoolToVisInv"/>
         <local:BadgeForegroundConverter x:Key="BadgeFgConv"/>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
     </Window.Resources>
@@ -195,14 +196,14 @@
                                     <!-- Left connector line -->
                                     <Rectangle Grid.Row="0" Grid.Column="0"
                                                Height="2" VerticalAlignment="Center"
-                                               Fill="{Binding State, Converter={StaticResource LineFillConv}}"
-                                               Visibility="{Binding IsLast, Converter={StaticResource InvertBoolConv}}"/>
+                                               Fill="{Binding PreviousState, Converter={StaticResource LineFillConv}}"
+                                               Visibility="{Binding IsFirst, Converter={StaticResource BoolToVisInv}}"/>
 
                                     <!-- Right connector line (hidden for last) -->
                                     <Rectangle Grid.Row="0" Grid.Column="2"
                                                Height="2" VerticalAlignment="Center"
                                                Fill="{Binding State, Converter={StaticResource LineFillConv}}"
-                                               Visibility="{Binding IsLast, Converter={StaticResource InvertBoolConv}}"/>
+                                               Visibility="{Binding IsLast, Converter={StaticResource BoolToVisInv}}"/>
 
                                     <!-- Circle + check / cross -->
                                     <Grid Grid.Row="0" Grid.Column="1" Width="18" Height="18">

@@ -5,6 +5,7 @@
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>ezgetBMCIP.ico</ApplicationIcon>
     <AssemblyName>ezgetBMCIP</AssemblyName>
     <RootNamespace>EzGetBmcIp</RootNamespace>

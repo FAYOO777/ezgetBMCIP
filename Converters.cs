@@ -137,6 +137,15 @@ public sealed class InvertBoolConverter : IValueConverter
         => !(bool)value;
 }
 
+public sealed class BoolToVisibilityInvertedConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => value is bool b && b ? Visibility.Collapsed : Visibility.Visible;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => value is Visibility v && v != Visibility.Visible;
+}
+
 /// <summary>Returns white text for dark badge backgrounds, dark text for light badge backgrounds.</summary>
 public sealed class BadgeForegroundConverter : IValueConverter
 {

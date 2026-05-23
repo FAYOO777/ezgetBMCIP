@@ -17,6 +17,7 @@ public sealed class StepItem : INotifyPropertyChanged
     private StepState _state;
     private bool _isFirst;
     private bool _isLast;
+    private StepState _previousState;
 
     public string Title { get; }
     public string ShortTitle { get; }
@@ -43,6 +44,12 @@ public sealed class StepItem : INotifyPropertyChanged
     {
         get => _isLast;
         set { _isLast = value; OnPropertyChanged(); }
+    }
+
+    public StepState PreviousState
+    {
+        get => _previousState;
+        set { _previousState = value; OnPropertyChanged(); }
     }
 
     public StepItem(string title, string shortTitle, string description)

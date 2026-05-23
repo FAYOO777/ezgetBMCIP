@@ -41,6 +41,7 @@ public partial class MainWindow : Window
         }
 
         _allowClose = true;
+        _vm.CancelFlow();
         await _vm.CleanupAsync();
         Application.Current.Shutdown();
     }
@@ -52,6 +53,7 @@ public partial class MainWindow : Window
 
         e.Cancel = true;
         _allowClose = true;
+        _vm.CancelFlow();
         await _vm.CleanupAsync();
         Application.Current.Shutdown();
     }

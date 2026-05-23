@@ -37,6 +37,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             Steps[i].IsFirst = i == 0;
             Steps[i].IsLast = i == Steps.Count - 1;
+            Steps[i].PreviousState = i == 0 ? StepState.Pending : Steps[i - 1].State;
         }
     }
 
@@ -204,14 +205,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
             await ConfigureLocalAdapterAsync(_flowCts.Token);
             await WaitForLinkAsync(_flowCts.Token);
             var lease = await WaitForDhcpLeaseAsync(_flowCts.Token);
+            SetStep(3, StepState.Active, "正在打开默认浏览器访问 BMC 管理页面。");
+            SetBusy("正在打开 BMC 管理页面...", "BMC 地址：http://" + lease.IpAddress);
             OpenBrowser(lease.IpAddress.ToString());
+            await CompleteStepAsync(3, "✅ 已自动打开 BMC 管理页面", _flowCts.Token);
 
-            SetStep(3, StepState.Done, "✅ 已自动打开 BMC 管理页面");
-            SetStep(4, StepState.Done, "可以登录 BMC 后点击「完成 / 退出」还原网卡。");
+            SetStep(4, StepState.Pending, "可以登录 BMC 后点击「完成 / 退出」还原网卡。");
             StatusText = "✅ 已自动打开 BMC 管理页面";
             DetailText = "BMC 地址：http://" + lease.IpAddress;
             BadgeState = StepState.Done;
             BadgeText = "✓ 已完成";
+            ActivityText = "BMC 管理页面已打开，完成后点击右下角退出。";
             StopEllipsis();
         }
         catch (OperationCanceledException)
@@ -320,9 +324,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         try
         {
+            _flowCts?.Cancel();
             SetStep(4, StepState.Active, "正在关闭 DHCP Server 并还原网卡配置...");
             StatusText = "正在清理并退出...";
             DetailText = "请稍候，正在把网卡恢复为启动前的配置。";
+            ActivityText = GetActivityText(4, StepState.Active);
             BadgeState = StepState.Active;
             BadgeText = "处理中";
             StartEllipsis();
@@ -338,6 +344,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             SetStep(4, StepState.Done, "✅ 网卡配置已还原，DHCP Server 已关闭");
             StatusText = "✅ 清理完成";
             DetailText = "网卡配置已还原，可以安全退出。";
+            ActivityText = GetActivityText(4, StepState.Done);
             BadgeState = StepState.Done;
             BadgeText = "✓ 已完成";
             StopEllipsis();
@@ -367,7 +374,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         Steps[index].State = state;
         Steps[index].Description = description;
+        RefreshStepFlags();
         CurrentStepIndex = index;
+        ActivityText = GetActivityText(index, state);
         BadgeState = state;
         BadgeText = state switch
         {
@@ -383,6 +392,49 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         StatusText = main;
         DetailText = detail;
+    }
+
+    public void CancelFlow()
+    {
+        _flowCts?.Cancel();
+    }
+
+    private static string GetActivityText(int index, StepState state)
+    {
+        if (state == StepState.Done)
+        {
+            return index switch
+            {
+                0 => "本机网卡和 DHCP 服务已准备好。",
+                1 => "已检测到网线连接，链路已 UP。",
+                2 => "已获取 IPMI 设备地址。",
+                3 => "BMC 管理页面已打开。",
+                _ => "清理完成，可以安全退出。"
+            };
+        }
+
+        if (state == StepState.Failed)
+        {
+            return "遇到问题，请按提示检查后重试。";
+        }
+
+        if (state == StepState.Pending)
+        {
+            return index switch
+            {
+                4 => "完成登录后点击右下角按钮退出并恢复网卡。",
+                _ => "等待上一步完成。"
+            };
+        }
+
+        return index switch
+        {
+            0 => "正在将网卡设置为静态 IP 10.77.77.1，请稍候...",
+            1 => "正在等待你插入连接 IPMI 管理口的网线...",
+            2 => "正在等待 IPMI 设备通过 DHCP 获取地址...",
+            3 => "正在打开默认浏览器访问 BMC 管理页面...",
+            _ => "正在关闭 DHCP 服务并恢复网卡配置..."
+        };
     }
 
     private void MarkCurrentFailure(string message)
