@@ -1,0 +1,66 @@
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Windows;
+
+namespace EzGetBmcIp;
+
+public partial class MainWindow : Window
+{
+    private readonly MainViewModel _vm;
+    private bool _allowClose;
+
+    public MainWindow()
+    {
+        InitializeComponent();
+
+        _vm = new MainViewModel();
+        _vm.RequestClose += OnRequestClose;
+        _vm.OpenBrowserRequested += OnOpenBrowser;
+        DataContext = _vm;
+
+        Closing += OnWindowClosing;
+    }
+
+    private void TitleBar_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (e.ClickCount == 1)
+            DragMove();
+    }
+
+    private void CloseButton_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
+    }
+
+    private async void OnRequestClose()
+    {
+        if (_allowClose)
+        {
+            Application.Current.Shutdown();
+            return;
+        }
+
+        _allowClose = true;
+        await _vm.CleanupAsync();
+        Application.Current.Shutdown();
+    }
+
+    private async void OnWindowClosing(object? sender, CancelEventArgs e)
+    {
+        if (_allowClose)
+            return;
+
+        e.Cancel = true;
+        _allowClose = true;
+        await _vm.CleanupAsync();
+        Application.Current.Shutdown();
+    }
+
+    private static void OnOpenBrowser(string ipAddress)
+    {
+        Process.Start(new ProcessStartInfo("http://" + ipAddress)
+        {
+            UseShellExecute = true
+        });
+    }
+}

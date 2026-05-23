@@ -2,10 +2,10 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
-    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>ezgetBMCIP.ico</ApplicationIcon>
     <AssemblyName>ezgetBMCIP</AssemblyName>
     <RootNamespace>EzGetBmcIp</RootNamespace>
     <PublishSingleFile>true</PublishSingleFile>
@@ -16,6 +16,7 @@
     <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
+    <Resource Include="ezgetBMCIP.ico" />
     <Compile Remove="bin\**" />
     <Compile Remove="obj\**" />
     <Compile Remove="artifacts\**" />

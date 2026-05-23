@@ -2,7 +2,7 @@ using System.Net;
 
 namespace EzGetBmcIp;
 
-internal sealed record WiredAdapter(
+public sealed record WiredAdapter(
     string Name,
     string Description,
     string Id,
@@ -13,7 +13,7 @@ internal sealed record WiredAdapter(
         : Name + " - " + Description;
 }
 
-internal sealed class AdapterOriginalConfig
+public sealed class AdapterOriginalConfig
 {
     public bool DhcpEnabled { get; init; }
     public List<(IPAddress Address, IPAddress Mask)> StaticAddresses { get; } = new();
@@ -26,7 +26,7 @@ internal sealed class AdapterOriginalConfig
     }
 }
 
-internal sealed class DhcpLease
+public sealed class DhcpLease
 {
     public IPAddress IpAddress { get; init; } = IPAddress.None;
     public byte[] MacAddress { get; init; } = Array.Empty<byte>();
