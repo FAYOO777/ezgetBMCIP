@@ -108,21 +108,6 @@ jobs:
             publish/ezgetBMCIP-lite.exe
           body_path: release-notes.md
 
-      - name: Delete old releases (keep only current)
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $current = "${{ github.ref_name }}"
-          $releases = gh release list --json tagName,name --jq '.[].tagName' 2>$null
-          foreach ($r in $releases) {
-            if ($r -ne $current) {
-              Write-Host "Deleting old release: $r"
-              gh release delete $r --yes --cleanup-tag 2>$null
-            }
-          }
-          Write-Host "Release cleanup done"
-
       # ── R2 upload ────────────────────────────────────────────────
 
       - name: Configure AWS CLI
