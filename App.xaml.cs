@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Security.Principal;
 using System.Windows;
+using Wpf.Ui.Appearance;
 
 namespace EzGetBmcIp;
 
@@ -16,14 +17,17 @@ public partial class App : Application
             ex.Handled = true;
         };
 
-        base.OnStartup(e);
-
         if (!IsAdministrator())
         {
             RestartAsAdministrator();
             Shutdown();
             return;
         }
+
+        // 跟随系统亮/暗主题
+        ApplicationThemeManager.ApplySystemTheme();
+
+        base.OnStartup(e);
     }
 
     private static bool IsAdministrator()

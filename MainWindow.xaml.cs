@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows;
+using Wpf.Ui.Appearance;
 using Wpf.Ui.Controls;
 
 namespace EzGetBmcIp;
@@ -13,6 +14,9 @@ public partial class MainWindow : FluentWindow
     public MainWindow()
     {
         InitializeComponent();
+
+        // 运行时监听系统主题变化，自动切换
+        SystemThemeWatcher.Watch(this, WindowBackdropType.Mica);
 
         _vm = new MainViewModel();
         _vm.RequestClose += OnRequestClose;
