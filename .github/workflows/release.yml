@@ -91,6 +91,7 @@ jobs:
           if (-not (Test-Path versions.json)) {
             '[]' | Out-File -Encoding utf8 versions.json
           }
+          exit 0
 
       - name: Update versions.json
         id: version_json
