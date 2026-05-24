@@ -7,9 +7,10 @@ $ErrorActionPreference = "Stop"
 Write-Host "Building lite version..." -ForegroundColor Cyan
 
 dotnet publish -c Release -r win-x64 `
-  -p:PublishSingleFile=false `
+  -p:PublishSingleFile=true `
   -p:SelfContained=false `
   -p:PublishReadyToRun=false `
+  -p:EnableCompressionInSingleFile=false `
   -o publish\lite
 
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
