@@ -119,20 +119,7 @@ jobs:
           echo "full_size=$fullSize" >> $env:GITHUB_OUTPUT
           echo "lite_size=$liteSize" >> $env:GITHUB_OUTPUT
 
-      - name: Download existing versions.json from R2
-        shell: pwsh
-        env:
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-        run: |
-          $endpoint = "https://$env:R2_ACCOUNT_ID.r2.cloudflarestorage.com"
-          aws s3 cp "s3://$env:R2_BUCKET_NAME/versions.json" versions.json --endpoint-url $endpoint 2>$null
-          if (-not (Test-Path versions.json)) {
-            '[]' | Out-File -Encoding utf8 versions.json
-          }
-          exit 0
-
-      - name: Update versions.json
+      - name: Update versions.json (fresh, current release only)
         shell: pwsh
         env:
           R2_PUBLIC_DOMAIN: ${{ secrets.R2_PUBLIC_DOMAIN }}
@@ -164,17 +151,9 @@ jobs:
             )
           }
 
-          $versions = Get-Content versions.json -Raw | ConvertFrom-Json
-          $list = [System.Collections.ArrayList]@($versions)
-          # Remove existing entry with same version to avoid duplicates
-          for ($i = $list.Count - 1; $i -ge 0; $i--) {
-            if ($list[$i].version -eq $tag) {
-              $list.RemoveAt($i)
-            }
-          }
-          $list.Insert(0, $entry)
+          $list = @($entry)
           ConvertTo-Json -InputObject $list -Depth 4 | Out-File -Encoding utf8 versions.json
-          Write-Host "Updated versions.json: $tag (entries: $($list.Count))"
+          Write-Host "Created fresh versions.json: $tag"
 
       - name: Upload exe files to R2
         shell: pwsh
