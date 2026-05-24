@@ -1,96 +1,72 @@
 # ezgetBMCIP
 
 <p align="center">
-  <img src="ezgetBMCIP.svg" width="120" alt="ezgetBMCIP icon"/>
+  <img src="ezgetBMCIP.svg" width="120" alt="logo"/>
 </p>
 
-Windows WPF 桌面工具，获取BMC的IP，应该可以变得更简单。直连服务器 IPMI/BMC 管理口后自动配置临时网段、分配 DHCP 地址并打开 BMC 页面。
+获取BMC的IP，应该可以变得更简单。直连服务器 IPMI/BMC 管理口，自动配网段、起 DHCP、开 BMC 页面，全程无需手动操作。
 
-## 界面
+基于 [WPF-UI](https://github.com/lepoco/wpfui) 4.x，Win11 Mica 云母材质，自动跟随系统亮/暗主题。
 
-基于 [WPF-UI](https://github.com/lepoco/wpfui) 4.x 构建，原生 Win11 Mica 材质，自动跟随系统亮/暗主题。
-
-## 功能
-
-- 启动时检测管理员权限，不足时自动 UAC 提权重启。
-- 检测有线网卡，多块网卡时提示选择。
-- 记录原始网络配置，退出时统一恢复网卡为 DHCP。
-- 临时配置本机网卡为 `10.77.77.1/255.255.255.0`。
-- 内嵌轻量 DHCP Server，地址池 `10.77.77.100` 到 `10.77.77.200`，网关 `10.77.77.1`。
-- 通过 WMI/CIM 查询 `Win32_NetworkAdapter` 轮询链路状态。
-- 收到 IPMI DHCP 请求后自动打开 `http://<IPMI IP>`。
-- 点击"完成 / 退出"或关闭窗口时都会关闭 DHCP Server 并还原网卡。
-- 5 步可视化进度指示，失败时明确提示原因。
-- 自动跟随 Windows 系统主题（亮色/暗色），无需手动切换。
-
-## 下载
-
-每次 Release 提供两个版本：
-
-| 版本 | 文件名 | 大小 | 需要安装运行时？ |
-|---|---|---|---|
-| **Full** | `ezgetBMCIP-full.exe` | ~65 MB | 不需要 |
-| **Lite** | `ezgetBMCIP-lite.exe` | ~1.3 MB | 需要 .NET Desktop Runtime 8.0 x64 |
-
-- **Full 版**：适合现场运维，插 U 盘直接运行。
-- **Lite 版**：适合已安装运行时的机器，下载快。
-
-### Lite 版运行前
-请先安装 Microsoft .NET Desktop Runtime 8.0 x64：
-https://dotnet.microsoft.com/en-us/download/dotnet/8.0
-
-> 注意：需要的是 **Desktop Runtime**，不是 ASP.NET Core Runtime 或普通 .NET Runtime。
-
-## 编译
-
-```powershell
-dotnet build -c Release
-```
-
-## 发布
-
-### Full 版（自包含，免运行时）
-```powershell
-.\scripts\publish-full.ps1
-```
-
-### Lite 版（依赖运行时，体积小）
-```powershell
-.\scripts\publish-lite.ps1
-```
-
-手动命令：
-
-**Full：**
-```powershell
-dotnet publish -c Release -r win-x64 `
-  -p:PublishSingleFile=true `
-  -p:SelfContained=true `
-  -p:EnableCompressionInSingleFile=true `
-  -p:IncludeNativeLibrariesForSelfExtract=true `
-  -o publish\full
-```
-
-**Lite：**
-```powershell
-dotnet publish -c Release -r win-x64 `
-  -p:PublishSingleFile=true `
-  -p:SelfContained=false `
-  -p:PublishReadyToRun=false `
-  -p:EnableCompressionInSingleFile=false `
-  -o publish\lite
-```
-
-发布后输出：
-
-```text
-publish\
-  ezgetBMCIP-full.exe   (~65 MB)
-  ezgetBMCIP-lite.exe   (~2 MB)
-  full\                  (中间产物)
-  lite\                  (中间产物)
-```
+<p align="center">
+  <img src="ezgetBMCIP-ScreenShot.png" width="720" alt="截图"/>
+</p>
 
 ## 使用提示
 
-运行程序后按界面提示插入网线即可。程序退出前会还原网卡配置，请尽量通过"完成 / 退出"按钮关闭；直接点窗口叉号也会触发还原流程。
+运行后选网卡 → 插网线 → 等自动打开 BMC 页面 → 登录操作 → 点"完成 / 退出"。
+
+- 程序退出前**自动还原网卡配置**，请尽量通过按钮关闭；直接关窗口也会触发还原。
+- 需要**管理员权限**，启动时自动 UAC 提权。
+- 确保网线插在服务器的 **IPMI 专用管理口**，不是普通网口。
+
+## 功能
+
+- 🖥️ 检测有线网卡，多网卡时可选
+- 📝 记录原始网络配置，退出时自动还原为 DHCP
+- 🔧 临时配置本机为 `10.77.77.1/255.255.255.0`
+- 📡 内嵌 DHCP Server（地址池 `10.77.77.100` ~ `10.77.77.200`）
+- 🔗 WMI/CIM 轮询网卡链路状态
+- 🌐 获取 IPMI IP 后自动调用浏览器打开 BMC 页面
+- 🧹 关闭时自动停 DHCP、还原网卡
+- 🪜 5 步可视化进度指示，失败时明确提示
+- 🌗 自动跟随 Windows 系统亮/暗主题
+
+## 工作流程
+
+| 步骤 | 说明 |
+|---|---|
+| 1. 配置本机网卡 | 记录原始配置 → 设为 10.77.77.1 → 启动 DHCP |
+| 2. 连接网线 | 等待网线插入 IPMI 管理口，检测 Link UP |
+| 3. 获取 IPMI IP | DHCP 监听 IPMI 请求，自动获取地址 |
+| 4. 打开 BMC | 浏览器自动打开 `http://<IPMI IP>` |
+| 5. 清理退出 | 关闭 DHCP Server，恢复网卡原始配置 |
+
+## 下载
+
+每次 Release 提供两个版本：[📥 下载页](https://dl.fayoo.fun) / [GitHub Releases](https://github.com/FAYOO777/ezgetBMCIP/releases)
+
+| 版本 | 说明 |
+|---|---|
+| **Full** `ezgetBMCIP-full.exe` | 自包含，免运行时，适合 U 盘现场运维 |
+| **Lite** `ezgetBMCIP-lite.exe` | 体积小，需安装 [.NET Desktop Runtime 8.0](https://dotnet.microsoft.com/en-us/download/dotnet/8.0) |
+
+## 技术栈
+
+- .NET 8 WPF
+- [WPF-UI 4.x](https://github.com/lepoco/wpfui)
+- WMI / CIM（网卡检测、链路状态）
+- 内嵌轻量 DHCP Server
+
+## 编译 & 发布
+
+```powershell
+# 编译
+dotnet build -c Release
+
+# 发布 Full 版（自包含）
+.\scripts\publish-full.ps1
+
+# 发布 Lite 版（框架依赖）
+.\scripts\publish-lite.ps1
+```
