@@ -95,8 +95,11 @@ jobs:
         id: release_notes
         shell: pwsh
         run: |
-          git tag -l --format='%(contents)' "${{ github.ref_name }}" > release-notes.md
-          Write-Host "Release notes extracted"
+          $tag = "${{ github.ref_name }}"
+          $body = git show --no-patch --format='%B' $tag 2>$null
+          if (-not $body) { $body = "Release $tag" }
+          $body | Out-File -Encoding utf8 -NoNewline release-notes.md
+          Write-Host "Release notes ($($body.Length) chars)"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
