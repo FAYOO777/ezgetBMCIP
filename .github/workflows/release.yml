@@ -144,10 +144,6 @@ jobs:
           $liteSize = ${{ steps.sizes.outputs.lite_size }}
           $domain = $env:R2_PUBLIC_DOMAIN
 
-          # 从 git tag 注解提取更新说明
-          $tagMsg = (git tag -l --format='%(contents)' $tag 2>$null) ?? ""
-          $notes = if ($tagMsg.Trim()) { $tagMsg.Trim() } else { $null }
-
           $entry = [PSCustomObject]@{
             version = $tag
             date = $date
@@ -166,7 +162,6 @@ jobs:
                 desc = "体积小，下载快，需要系统装有 .NET Desktop Runtime 8.0"
               }
             )
-            notes = $notes
           }
 
           $versions = Get-Content versions.json -Raw | ConvertFrom-Json
