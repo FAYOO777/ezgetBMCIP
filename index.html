@@ -643,20 +643,24 @@
     </div>
     <div class="intro-card">
       <h3>关于 ezgetBMCIP</h3>
-      <p>直连服务器 IPMI/BMC 管理口，自动配网段、起 DHCP、开 BMC 页面，全程无需手动操作。基于 WPF-UI 4.x，Win11 Mica 材质，跟随系统亮/暗主题。</p>
+      <p>服务器一般都带有一个独立的 BMC（基板管理控制器）芯片，通过 IPMI 管理口可以远程开关机、装系统、看屏幕。但新机器出厂时 BMC 的 IP 地址通常是 DHCP 自动获取的，你不知道它分到了什么地址，也就没法用浏览器打开管理页面。</p>
+      <p>ezgetBMCIP 解决的就是这个问题：用一根网线把你的电脑和服务器 IPMI 口直连，程序会自动在你的电脑上临时搭建一个 DHCP 服务器，等待 IPMI 上门来领 IP。一旦领到了，立刻帮你打开浏览器，直接进入 BMC 管理界面。</p>
+      <p>基于 WPF-UI 4.x 构建，原生 Win11 Mica 云母半透明材质，自动跟随系统亮色/暗色主题。</p>
       <h3>工作流程</h3>
       <div class="intro-steps">
-        <div><span>1.</span> 配置网卡 → 设为 10.77.77.1</div>
-        <div><span>2.</span> 连接网线 → 等待 Link UP</div>
-        <div><span>3.</span> 获取 IP → DHCP 监听</div>
-        <div><span>4.</span> 打开 BMC → 自动浏览器</div>
-        <div><span>5.</span> 清理退出 → 还原 DHCP</div>
+        <div><span>1.</span> 选择网卡 → 程序检测有线网卡列表</div>
+        <div><span>2.</span> 配置本机 → 网卡临时设为 10.77.77.1</div>
+        <div><span>3.</span> 启动 DHCP → 内嵌轻量 DHCP Server</div>
+        <div><span>4.</span> 插入网线 → 等待检测到 Link UP</div>
+        <div><span>5.</span> 等待 IPMI → 最多 3 分钟，获取到 IP</div>
+        <div><span>6.</span> 自动打开浏览器 → 进入 BMC 登录页面</div>
       </div>
-      <h3>提示</h3>
+      <h3>使用提示</h3>
       <ul>
-        <li>需要管理员权限，启动时自动提权</li>
-        <li>网线请插服务器 IPMI 专用管理口</li>
-        <li>退出时自动还原网卡配置</li>
+        <li>程序需要<strong>管理员权限</strong>才能修改网卡 IP 和启动 DHCP 服务，启动时会自动弹出 UAC 提权窗口，点"是"即可。</li>
+        <li>网线请插在服务器主板上标注 <strong>IPMI / BMC / MGMT</strong> 的专用管理口（通常是独立于普通网口的那个），不是插普通 LAN 口。</li>
+        <li>如果 3 分钟后还没反应，检查网线是否插对接口、服务器是否通电（IPMI 芯片在关机状态下通常也能工作）。</li>
+        <li>操作完成后点击右下角"完成 / 退出"，程序会自动关闭 DHCP 并把你的网卡恢复为 DHCP 模式，不影响正常上网。</li>
       </ul>
     </div>`;
 
