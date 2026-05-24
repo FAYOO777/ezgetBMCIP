@@ -299,13 +299,29 @@
 
         <!-- ═══════════════ Footer ═══════════════ -->
         <Border Grid.Row="2" Background="{StaticResource VsCardBrush}"
-                BorderBrush="{StaticResource VsBorderBrush}" BorderThickness="0,1,0,0">
-            <Button Content="完成 / 退出"
-                    Command="{Binding ExitCommand}"
-                    Background="{StaticResource VsExitBrush}"
-                    HorizontalAlignment="Right" VerticalAlignment="Center"
-                    Width="130" Height="40" Margin="0,0,24,0"
-                                        FontSize="14" FontWeight="Bold"/>
+                BorderBrush="{StaticResource VsBorderBrush}" BorderThickness="0,1,0,0"
+                Padding="24,0">
+            <Grid>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding VersionText}" FontSize="11"
+                               Foreground="{StaticResource VsMutedBrush}" VerticalAlignment="Center"/>
+                    <TextBlock Text=" · " FontSize="11"
+                               Foreground="{StaticResource VsBorderBrush}" VerticalAlignment="Center"/>
+                    <TextBlock FontSize="11" VerticalAlignment="Center" Cursor="Hand"
+                               Foreground="{StaticResource VsAccentBrush}">
+                        <Hyperlink NavigateUri="{Binding GitHubUrl}" RequestNavigate="GitHubLink_RequestNavigate"
+                                   Foreground="{StaticResource VsAccentBrush}" TextDecorations="None">
+                            GitHub
+                        </Hyperlink>
+                    </TextBlock>
+                </StackPanel>
+                <Button Content="完成 / 退出"
+                        Command="{Binding ExitCommand}"
+                        Background="{StaticResource VsExitBrush}"
+                        HorizontalAlignment="Right" VerticalAlignment="Center"
+                        Width="130" Height="40"
+                        FontSize="14" FontWeight="Bold"/>
+            </Grid>
         </Border>
     </Grid>
 </Window>

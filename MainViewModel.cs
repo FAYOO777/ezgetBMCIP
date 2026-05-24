@@ -141,6 +141,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set { _isCleanupDone = value; OnPropertyChanged(); }
     }
 
+    public string VersionText => "v1.0-beta3";
+    public string GitHubUrl => "https://github.com/FAYOO777/ezgetBMCIP";
+
     private bool _isFlowStarted;
 
     public bool IsFlowStarted

@@ -32,6 +32,12 @@ public partial class MainWindow : Window
         Close();
     }
 
+    private void GitHubLink_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
+    {
+        Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
+        e.Handled = true;
+    }
+
     private async void OnRequestClose()
     {
         if (_allowClose)
