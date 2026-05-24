@@ -48,8 +48,8 @@
 
 | 版本 | 说明 |
 |---|---|
-| **Full** `ezgetBMCIP-full.exe` | 自包含，免运行时，适合 U 盘现场运维 |
-| **Lite** `ezgetBMCIP-lite.exe` | 体积小，需安装 [.NET Desktop Runtime 8.0](https://dotnet.microsoft.com/en-us/download/dotnet/8.0) |
+| **Full** `ezgetBMCIP-full.exe` | 完整打包，开箱即用，无需额外环境 |
+| **Lite** `ezgetBMCIP-lite.exe` | 体积小，下载快，需要系统装有 .NET Desktop Runtime 8.0 |
 
 ## 技术栈
 
