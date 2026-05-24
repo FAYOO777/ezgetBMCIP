@@ -268,7 +268,49 @@
                 box-shadow: var(--shadow-lg);
             }
 
-            /* --- Card Content --- */
+            .intro-card {
+                background: var(--card-bg);
+                border-radius: var(--radius-lg);
+                padding: 28px 32px;
+                margin-bottom: 24px;
+                border: 1px solid var(--border);
+                border-left: 4px solid var(--accent);
+                box-shadow: var(--shadow-md);
+            }
+            .intro-card h3 {
+                font-size: 17px;
+                font-weight: 700;
+                margin: 0 0 8px;
+                color: var(--accent);
+            }
+            .intro-card p {
+                color: var(--text-muted);
+                font-size: 14px;
+                line-height: 1.7;
+                margin: 0 0 12px;
+            }
+            .intro-card ul {
+                margin: 0 0 12px;
+                padding-left: 20px;
+                color: var(--text-muted);
+                font-size: 13px;
+                line-height: 1.8;
+            }
+            .intro-card ul li {
+                margin-bottom: 2px;
+            }
+            .intro-steps {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 6px 16px;
+                font-size: 13px;
+                color: var(--text-muted);
+            }
+            .intro-steps span {
+                font-weight: 600;
+                color: var(--accent);
+            }
+
             .hero-tag {
                 font-size: 28px;
                 font-weight: 800;
@@ -598,6 +640,24 @@
       </div>
       <div class="hero-date">发布于 ${latestStable.date}</div>
       ${(latestStable.assets || []).map((a) => assetRow(a, true)).join("")}
+    </div>
+    <div class="intro-card">
+      <h3>关于 ezgetBMCIP</h3>
+      <p>直连服务器 IPMI/BMC 管理口，自动配网段、起 DHCP、开 BMC 页面，全程无需手动操作。基于 WPF-UI 4.x，Win11 Mica 材质，跟随系统亮/暗主题。</p>
+      <h3>工作流程</h3>
+      <div class="intro-steps">
+        <div><span>1.</span> 配置网卡 → 设为 10.77.77.1</div>
+        <div><span>2.</span> 连接网线 → 等待 Link UP</div>
+        <div><span>3.</span> 获取 IP → DHCP 监听</div>
+        <div><span>4.</span> 打开 BMC → 自动浏览器</div>
+        <div><span>5.</span> 清理退出 → 还原 DHCP</div>
+      </div>
+      <h3>提示</h3>
+      <ul>
+        <li>需要管理员权限，启动时自动提权</li>
+        <li>网线请插服务器 IPMI 专用管理口</li>
+        <li>退出时自动还原网卡配置</li>
+      </ul>
     </div>`;
 
                 // ── History tab ──
