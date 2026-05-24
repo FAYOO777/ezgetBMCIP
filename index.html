@@ -274,8 +274,18 @@
                 padding: 28px 32px;
                 margin-bottom: 24px;
                 border: 1px solid var(--border);
-                border-left: 4px solid var(--accent);
                 box-shadow: var(--shadow-md);
+                position: relative;
+                overflow: hidden;
+            }
+            .intro-card::before {
+                content: "";
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 4px;
+                background: var(--accent);
             }
             .intro-card h3 {
                 font-size: 17px;
