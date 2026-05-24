@@ -49,7 +49,7 @@ jobs:
           Copy-Item publish/full/ezgetBMCIP.exe publish/ezgetBMCIP-full.exe
           Copy-Item publish/lite/ezgetBMCIP.exe publish/ezgetBMCIP-lite.exe
 
-      - name: Create Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
@@ -58,3 +58,97 @@ jobs:
             publish/ezgetBMCIP-full.exe
             publish/ezgetBMCIP-lite.exe
           generate_release_notes: true
+
+      # ── R2 upload ────────────────────────────────────────────────
+
+      - name: Configure AWS CLI
+        shell: pwsh
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          aws configure set aws_access_key_id $env:R2_ACCESS_KEY_ID
+          aws configure set aws_secret_access_key $env:R2_SECRET_ACCESS_KEY
+          aws configure set region auto
+
+      - name: Get file sizes
+        id: sizes
+        shell: pwsh
+        run: |
+          $fullSize = (Get-Item publish/ezgetBMCIP-full.exe).Length
+          $liteSize = (Get-Item publish/ezgetBMCIP-lite.exe).Length
+          echo "full_size=$fullSize" >> $env:GITHUB_OUTPUT
+          echo "lite_size=$liteSize" >> $env:GITHUB_OUTPUT
+
+      - name: Download existing versions.json from R2
+        shell: pwsh
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: |
+          $endpoint = "https://$env:R2_ACCOUNT_ID.r2.cloudflarestorage.com"
+          aws s3 cp "s3://$env:R2_BUCKET_NAME/versions.json" versions.json --endpoint-url $endpoint 2>$null
+          if (-not (Test-Path versions.json)) {
+            '[]' | Out-File -Encoding utf8 versions.json
+          }
+
+      - name: Update versions.json
+        id: version_json
+        shell: pwsh
+        env:
+          R2_PUBLIC_DOMAIN: ${{ secrets.R2_PUBLIC_DOMAIN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $date = (Get-Date -Format "yyyy-MM-dd")
+          $prerelease = "${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}" -eq "true"
+          $fullSize = ${{ steps.sizes.outputs.full_size }}
+          $liteSize = ${{ steps.sizes.outputs.lite_size }}
+          $domain = $env:R2_PUBLIC_DOMAIN
+
+          $entry = @{
+            version = $tag
+            date = $date
+            prerelease = $prerelease
+            assets = @(
+              @{
+                name = "ezgetBMCIP-full.exe"
+                url = "https://$domain/$tag/ezgetBMCIP-full.exe"
+                size = [long]$fullSize
+                desc = "自包含，免安装运行时，适合 U 盘现场运维"
+              },
+              @{
+                name = "ezgetBMCIP-lite.exe"
+                url = "https://$domain/$tag/ezgetBMCIP-lite.exe"
+                size = [long]$liteSize
+                desc = "需要 .NET Desktop Runtime 8.0 x64，体积小"
+              }
+            )
+          }
+
+          $versions = Get-Content versions.json -Raw | ConvertFrom-Json
+          $list = [System.Collections.ArrayList]@($versions)
+          $list.Insert(0, $entry)
+          ConvertTo-Json -InputObject $list -Depth 4 | Out-File -Encoding utf8 versions.json
+          Write-Host "Updated versions.json: $tag"
+
+      - name: Upload exe files to R2
+        shell: pwsh
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $endpoint = "https://$env:R2_ACCOUNT_ID.r2.cloudflarestorage.com"
+          aws s3 cp publish/ezgetBMCIP-full.exe "s3://$env:R2_BUCKET_NAME/$tag/ezgetBMCIP-full.exe" --endpoint-url $endpoint
+          aws s3 cp publish/ezgetBMCIP-lite.exe "s3://$env:R2_BUCKET_NAME/$tag/ezgetBMCIP-lite.exe" --endpoint-url $endpoint
+          Write-Host "Uploaded to R2 /$tag/"
+
+      - name: Upload versions.json to R2
+        shell: pwsh
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: |
+          $endpoint = "https://$env:R2_ACCOUNT_ID.r2.cloudflarestorage.com"
+          aws s3 cp versions.json "s3://$env:R2_BUCKET_NAME/versions.json" --endpoint-url $endpoint --content-type "application/json"
+          Write-Host "Uploaded versions.json"
