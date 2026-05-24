@@ -16,6 +16,8 @@
                 --warn: #b08800;
                 --radius: 8px;
                 --shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+                --tab-bg: #f0f0f0;
+                --tab-active: #ffffff;
             }
             @media (prefers-color-scheme: dark) {
                 :root {
@@ -28,9 +30,10 @@
                     --success: #4ec9b0;
                     --warn: #cca700;
                     --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+                    --tab-bg: #2d2d2d;
+                    --tab-active: #252526;
                 }
             }
-
             * {
                 margin: 0;
                 padding: 0;
@@ -45,7 +48,6 @@
                 line-height: 1.6;
                 min-height: 100vh;
             }
-
             .container {
                 max-width: 720px;
                 margin: 0 auto;
@@ -54,7 +56,7 @@
 
             header {
                 text-align: center;
-                margin-bottom: 40px;
+                margin-bottom: 32px;
             }
             header svg {
                 width: 64px;
@@ -71,18 +73,88 @@
                 margin-top: 4px;
             }
 
-            .error-box {
-                background: var(--card);
-                border: 1px solid var(--border);
+            .tabs {
+                display: flex;
+                gap: 0;
+                margin-bottom: 20px;
                 border-radius: var(--radius);
-                padding: 24px;
-                text-align: center;
+                overflow: hidden;
+                border: 1px solid var(--border);
             }
-            .error-box p {
-                margin-bottom: 12px;
+            .tab-btn {
+                flex: 1;
+                padding: 10px 0;
+                border: none;
+                background: var(--tab-bg);
+                color: var(--muted);
+                font-size: 14px;
+                font-weight: 600;
+                cursor: pointer;
+                transition:
+                    background 0.15s,
+                    color 0.15s;
+                font-family: inherit;
             }
-            .error-box a {
+            .tab-btn.active {
+                background: var(--tab-active);
                 color: var(--accent);
+            }
+            .tab-btn + .tab-btn {
+                border-left: 1px solid var(--border);
+            }
+
+            .tab-panel {
+                display: none;
+            }
+            .tab-panel.active {
+                display: block;
+            }
+
+            .hero-card {
+                background: var(--card);
+                border: 2px solid var(--accent);
+                border-radius: var(--radius);
+                padding: 28px 24px;
+                margin-bottom: 20px;
+                box-shadow: var(--shadow);
+            }
+            .hero-tag {
+                font-size: 22px;
+                font-weight: 700;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                margin-bottom: 6px;
+            }
+            .hero-date {
+                color: var(--muted);
+                font-size: 13px;
+                margin-bottom: 18px;
+            }
+            .hero-asset {
+                display: flex;
+                align-items: center;
+                gap: 14px;
+                padding: 14px 0;
+            }
+            .hero-asset + .hero-asset {
+                border-top: 1px solid var(--border);
+            }
+            .hero-asset-info {
+                flex: 1;
+            }
+            .hero-asset-name {
+                font-weight: 600;
+                font-size: 15px;
+            }
+            .hero-asset-desc {
+                color: var(--muted);
+                font-size: 12px;
+                margin-top: 2px;
+            }
+            .hero-asset-size {
+                color: var(--muted);
+                font-size: 12px;
             }
 
             .version-card {
@@ -164,7 +236,6 @@
             .runtime-notice {
                 font-size: 11px;
                 color: var(--warn);
-                background: transparent;
                 margin-top: 4px;
             }
 
@@ -176,8 +247,8 @@
                 color: #fff;
                 border: none;
                 border-radius: 5px;
-                padding: 8px 16px;
-                font-size: 13px;
+                padding: 10px 20px;
+                font-size: 14px;
                 font-weight: 600;
                 cursor: pointer;
                 text-decoration: none;
@@ -186,6 +257,24 @@
             }
             .dl-btn:hover {
                 opacity: 0.85;
+            }
+            .dl-btn-sm {
+                padding: 8px 16px;
+                font-size: 13px;
+            }
+
+            .error-box {
+                background: var(--card);
+                border: 1px solid var(--border);
+                border-radius: var(--radius);
+                padding: 24px;
+                text-align: center;
+            }
+            .error-box p {
+                margin-bottom: 12px;
+            }
+            .error-box a {
+                color: var(--accent);
             }
 
             footer {
@@ -216,6 +305,20 @@
             #loading {
                 text-align: center;
                 padding: 40px 0;
+            }
+
+            .latest-icon {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 40px;
+                height: 40px;
+                background: var(--accent);
+                border-radius: 50%;
+                color: #fff;
+                font-size: 18px;
+                font-weight: 700;
+                flex-shrink: 0;
             }
         </style>
     </head>
@@ -265,11 +368,20 @@
                 <p>BMC 管理口快速登录工具</p>
             </header>
 
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('latest')">
+                    最新版本
+                </button>
+                <button class="tab-btn" onclick="switchTab('history')">
+                    历史版本
+                </button>
+            </div>
+
             <div id="loading"><div class="spinner"></div></div>
 
-            <div id="versions" style="display: none"></div>
-
-            <div id="error" style="display: none"></div>
+            <div id="latest-panel" class="tab-panel active"></div>
+            <div id="history-panel" class="tab-panel"></div>
+            <div id="error-panel" style="display: none"></div>
 
             <footer>
                 <a href="https://github.com/FAYOO777/ezgetBMCIP">GitHub</a>
@@ -291,74 +403,89 @@
                 return bytes + " B";
             }
 
+            function assetRow(asset, large) {
+                const isLite = asset.name.includes("lite");
+                return `<div class="${large ? "hero-asset" : "asset-row"}">
+    <div class="${large ? "hero-asset-info" : "asset-info"}">
+      <div class="${large ? "hero-asset-name" : "asset-name"}">${asset.name}</div>
+      <div class="${large ? "hero-asset-desc" : "asset-desc"}">${asset.desc}</div>
+      <div class="${large ? "hero-asset-size" : "asset-size"}">${fmtSize(asset.size)}</div>
+      ${large && isLite ? `<div class="runtime-notice">⚠ 需要 <a href="https://dotnet.microsoft.com/en-us/download/dotnet/8.0" style="color:inherit">.NET Desktop Runtime 8.0 x64</a> — 从微软官网下载</div>` : ""}
+    </div>
+    <a class="dl-btn ${large ? "" : "dl-btn-sm"}" href="${asset.url}" download>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 16v4h16v-4"/></svg>
+      下载
+    </a>
+  </div>`;
+            }
+
             function render(versions) {
                 document.getElementById("loading").style.display = "none";
-                const container = document.getElementById("versions");
-                container.style.display = "block";
-
-                let latestStable = null;
-                for (const v of versions) {
-                    if (!v.prerelease) {
-                        latestStable = v;
-                        break;
-                    }
+                if (!Array.isArray(versions) || versions.length === 0) {
+                    showError("暂无可用版本");
+                    return;
                 }
 
-                for (const v of versions) {
-                    const card = document.createElement("div");
-                    card.className = "version-card";
+                const latestStable =
+                    versions.find((v) => !v.prerelease) || versions[0];
 
-                    const header = document.createElement("div");
-                    header.className = "version-header";
-                    header.innerHTML = `
-      <span class="version-tag">${v.version}</span>
-      <span class="version-date">${v.date}</span>
-      ${
-          v.prerelease
-              ? '<span class="badge badge-beta">pre-release</span>'
-              : '<span class="badge badge-stable">stable</span>'
-      }
-    `;
-                    card.appendChild(header);
+                // ── Latest tab ──
+                const latestPanel = document.getElementById("latest-panel");
+                latestPanel.innerHTML = `
+    <div class="hero-card">
+      <div class="hero-tag">
+        <span class="latest-icon">↓</span>
+        <span>${latestStable.version}</span>
+        <span class="badge badge-stable">最新稳定版</span>
+      </div>
+      <div class="hero-date">发布于 ${latestStable.date}</div>
+      ${(latestStable.assets || []).map((a) => assetRow(a, true)).join("")}
+    </div>`;
 
-                    for (const asset of v.assets || []) {
-                        const row = document.createElement("div");
-                        row.className = "asset-row";
-                        const isStable = latestStable && v === latestStable;
-                        const isLite = asset.name.includes("lite");
-                        row.innerHTML = `
-        <div class="asset-info">
-          <div class="asset-name">${asset.name}</div>
-          <div class="asset-desc">${asset.desc}</div>
-          <div class="asset-size">${fmtSize(asset.size)}</div>
-          ${
-              isStable && isLite
-                  ? '<div class="runtime-notice">⚠ 需要 .NET Desktop Runtime 8.0 x64 — <a href="https://dotnet.microsoft.com/en-us/download/dotnet/8.0" style="color:inherit">从微软官网下载</a></div>'
-                  : ""
-          }
-        </div>
-        <a class="dl-btn" href="${asset.url}" download>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 16v4h16v-4"/>
-          </svg>
-          下载
-        </a>`;
-                        card.appendChild(row);
-                    }
-
-                    container.appendChild(card);
-                }
+                // ── History tab ──
+                const historyPanel = document.getElementById("history-panel");
+                historyPanel.innerHTML = versions
+                    .map(
+                        (v) => `
+    <div class="version-card">
+      <div class="version-header">
+        <span class="version-tag">${v.version}</span>
+        <span class="version-date">${v.date}</span>
+        ${v.prerelease ? '<span class="badge badge-beta">pre-release</span>' : '<span class="badge badge-stable">stable</span>'}
+      </div>
+      ${(v.assets || []).map((a) => assetRow(a, false)).join("")}
+    </div>`,
+                    )
+                    .join("");
             }
 
             function showError(msg) {
                 document.getElementById("loading").style.display = "none";
-                const el = document.getElementById("error");
-                el.style.display = "block";
-                el.innerHTML = `<div class="error-box">
-    <p>⚠ ${msg}</p>
-    <p><a href="${GITHUB_RELEASES}">前往 GitHub Releases 手动下载</a></p>
-  </div>`;
+                document.getElementById("error-panel").style.display = "block";
+                document.getElementById("error-panel").innerHTML =
+                    `<div class="error-box">
+    <p>⚠ ${msg}</p><p><a href="${GITHUB_RELEASES}">前往 GitHub Releases 手动下载</a></p></div>`;
             }
+
+            function switchTab(name) {
+                document
+                    .querySelectorAll(".tab-btn")
+                    .forEach((b, i) =>
+                        b.classList.toggle(
+                            "active",
+                            (i === 0 && name === "latest") ||
+                                (i === 1 && name === "history"),
+                        ),
+                    );
+                document
+                    .querySelectorAll(".tab-panel")
+                    .forEach((p) => p.classList.remove("active"));
+                document
+                    .getElementById(name + "-panel")
+                    .classList.add("active");
+            }
+
+            switchTab("latest");
 
             (async () => {
                 try {
@@ -367,11 +494,7 @@
                         throw new Error(
                             "无法获取版本列表（HTTP " + resp.status + "）",
                         );
-                    const versions = await resp.json();
-                    if (!Array.isArray(versions) || versions.length === 0) {
-                        throw new Error("暂无可用版本");
-                    }
-                    render(versions);
+                    render(await resp.json());
                 } catch (err) {
                     showError(err.message);
                 }
