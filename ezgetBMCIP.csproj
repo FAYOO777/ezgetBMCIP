@@ -9,6 +9,7 @@
     <ApplicationIcon>ezgetBMCIP.ico</ApplicationIcon>
     <AssemblyName>ezgetBMCIP</AssemblyName>
     <RootNamespace>EzGetBmcIp</RootNamespace>
+    <Version>1.1.0</Version>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -16,6 +17,9 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**</DefaultItemExcludes>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="WPF-UI" Version="4.*" />
+  </ItemGroup>
   <ItemGroup>
     <Resource Include="ezgetBMCIP.ico" />
     <Compile Remove="bin\**" />

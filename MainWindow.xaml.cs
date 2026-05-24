@@ -1,10 +1,11 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows;
+using Wpf.Ui.Controls;
 
 namespace EzGetBmcIp;
 
-public partial class MainWindow : Window
+public partial class MainWindow : FluentWindow
 {
     private readonly MainViewModel _vm;
     private bool _allowClose;
@@ -19,17 +20,6 @@ public partial class MainWindow : Window
         DataContext = _vm;
 
         Closing += OnWindowClosing;
-    }
-
-    private void TitleBar_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
-    {
-        if (e.ClickCount == 1)
-            DragMove();
-    }
-
-    private void CloseButton_Click(object sender, RoutedEventArgs e)
-    {
-        Close();
     }
 
     private void GitHubLink_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
