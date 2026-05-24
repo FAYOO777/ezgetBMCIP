@@ -41,6 +41,7 @@ jobs:
       - name: Build + Publish Full
         run: >
           dotnet publish -c Release -r win-x64
+          -p:Version="${{ github.ref_name }}"
           -p:PublishSingleFile=true
           -p:SelfContained=true
           -p:EnableCompressionInSingleFile=true
@@ -54,6 +55,7 @@ jobs:
       - name: Build + Publish Lite
         run: >
           dotnet publish -c Release -r win-x64
+          -p:Version="${{ github.ref_name }}"
           -p:PublishSingleFile=true
           -p:SelfContained=false
           -p:PublishReadyToRun=false
