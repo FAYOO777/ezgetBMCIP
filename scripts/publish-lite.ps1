@@ -9,6 +9,12 @@ Write-Host "Building lite version..." -ForegroundColor Cyan
 $publishDir = "publish\lite"
 $outputExe = "publish\ezgetBMCIP-lite.exe"
 
+$versionTag = git describe --tags --abbrev=0 2>$null
+if ([string]::IsNullOrWhiteSpace($versionTag)) {
+  $versionTag = "v1.0.0"
+}
+$versionNumber = $versionTag.TrimStart("v")
+
 if (Test-Path $publishDir) {
   Remove-Item $publishDir -Recurse -Force
 }
@@ -18,6 +24,8 @@ dotnet publish -c Release -r win-x64 `
   -p:SelfContained=false `
   -p:PublishReadyToRun=false `
   -p:EnableCompressionInSingleFile=false `
+  -p:Version=$versionNumber `
+  -p:InformationalVersion=$versionTag `
   -o $publishDir
 
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }

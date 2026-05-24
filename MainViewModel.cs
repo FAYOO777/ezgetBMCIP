@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Input;
@@ -141,7 +142,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set { _isCleanupDone = value; OnPropertyChanged(); }
     }
 
-    public string VersionText => "v1.0.4";
+    public string VersionText => GetVersionText();
     public string GitHubUrl => "https://github.com/FAYOO777/ezgetBMCIP";
 
     private bool _isFlowStarted;
@@ -466,6 +467,25 @@ public sealed class MainViewModel : INotifyPropertyChanged
             3 => "正在打开默认浏览器访问 BMC 管理页面...",
             _ => "正在关闭 DHCP 服务并恢复网卡配置..."
         };
+    }
+
+    private static string GetVersionText()
+    {
+        var version = Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+            .InformationalVersion;
+
+        if (string.IsNullOrWhiteSpace(version))
+            version = Assembly.GetExecutingAssembly().GetName().Version?.ToString();
+
+        if (string.IsNullOrWhiteSpace(version))
+            return "v0.0.0";
+
+        var plusIndex = version.IndexOf('+');
+        if (plusIndex >= 0)
+            version = version[..plusIndex];
+
+        return version.StartsWith("v", StringComparison.OrdinalIgnoreCase) ? version : "v" + version;
     }
 
     private void MarkCurrentFailure(string message)

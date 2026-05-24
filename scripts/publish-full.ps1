@@ -6,11 +6,19 @@ $ErrorActionPreference = "Stop"
 
 Write-Host "Building full version..." -ForegroundColor Cyan
 
+$versionTag = git describe --tags --abbrev=0 2>$null
+if ([string]::IsNullOrWhiteSpace($versionTag)) {
+  $versionTag = "v1.0.0"
+}
+$versionNumber = $versionTag.TrimStart("v")
+
 dotnet publish -c Release -r win-x64 `
   -p:PublishSingleFile=true `
   -p:SelfContained=true `
   -p:EnableCompressionInSingleFile=true `
   -p:IncludeNativeLibrariesForSelfExtract=true `
+  -p:Version=$versionNumber `
+  -p:InformationalVersion=$versionTag `
   -o publish\full
 
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }

@@ -22,6 +22,15 @@ jobs:
       - name: Restore
         run: dotnet restore
 
+      - name: Resolve release version
+        id: release_version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $number = $tag.TrimStart("v")
+          echo "tag=$tag" >> $env:GITHUB_OUTPUT
+          echo "number=$number" >> $env:GITHUB_OUTPUT
+
       - name: Clean publish output
         shell: pwsh
         run: |
@@ -36,6 +45,8 @@ jobs:
           -p:SelfContained=true
           -p:EnableCompressionInSingleFile=true
           -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:Version=${{ steps.release_version.outputs.number }}
+          -p:InformationalVersion=${{ steps.release_version.outputs.tag }}
           -o publish/full
 
       # ── Lite (framework-dependent) ───────────────────────────────
@@ -47,6 +58,8 @@ jobs:
           -p:SelfContained=false
           -p:PublishReadyToRun=false
           -p:EnableCompressionInSingleFile=false
+          -p:Version=${{ steps.release_version.outputs.number }}
+          -p:InformationalVersion=${{ steps.release_version.outputs.tag }}
           -o publish/lite
 
       - name: Rename artifacts
