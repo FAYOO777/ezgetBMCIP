@@ -259,6 +259,7 @@ internal static class NetworkConfigManager
 
             return rows?
                 .Where(row => !string.IsNullOrWhiteSpace(row.NetConnectionID))
+                .Where(row => LooksLikeWiredOnly(row.NetConnectionID!) && LooksLikeWiredOnly(row.Name ?? ""))
                 .Select(row => new WiredAdapter(
                     row.NetConnectionID!,
                     row.Name ?? string.Empty,
@@ -278,10 +279,8 @@ internal static class NetworkConfigManager
         return NetworkInterface.GetAllNetworkInterfaces()
             .Where(n =>
                 n.NetworkInterfaceType is NetworkInterfaceType.Ethernet
-                    or NetworkInterfaceType.FastEthernetT
-                    or NetworkInterfaceType.GigabitEthernet
-                    or NetworkInterfaceType.Wireless80211
-                    or NetworkInterfaceType.Ppp
+                        or NetworkInterfaceType.FastEthernetT
+                        or NetworkInterfaceType.GigabitEthernet
                 && !string.IsNullOrWhiteSpace(n.Name)
                 && n.GetPhysicalAddress().GetAddressBytes().Length == 6
                 && !LooksLikeVirtualOrFilterAdapter(n.Name)
@@ -297,6 +296,11 @@ internal static class NetworkConfigManager
 
     private static bool LooksLikeVirtualOrFilterAdapter(string value)
     {
+        return !LooksLikeWiredOnly(value);
+    }
+
+    private static bool LooksLikeWiredOnly(string value)
+    {
         var text = value.ToLowerInvariant();
         var blocked = new[]
         {
@@ -310,10 +314,15 @@ internal static class NetworkConfigManager
             "hyper-v",
             "vmware",
             "virtualbox",
-            "npcap"
+            "npcap",
+            "wireless",
+            "wifi",
+            "wi-fi",
+            "bluetooth",
+            "802.11"
         };
 
-        return blocked.Any(text.Contains);
+        return !blocked.Any(text.Contains);
     }
 
     private static string RunPowerShellSync(string command)

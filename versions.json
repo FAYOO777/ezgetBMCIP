@@ -1,0 +1,59 @@
+[
+  {
+    "date": "2026-05-24",
+    "version": "v1.0.6",
+    "assets": [
+      {
+        "size": 71979888,
+        "url": "https://dl.fayoo.fun/v1.0.6/ezgetBMCIP-full.exe",
+        "desc": "自包含，免安装运行时，适合 U 盘现场运维",
+        "name": "ezgetBMCIP-full.exe"
+      },
+      {
+        "size": 1339990,
+        "url": "https://dl.fayoo.fun/v1.0.6/ezgetBMCIP-lite.exe",
+        "desc": "需要 .NET Desktop Runtime 8.0 x64，体积小",
+        "name": "ezgetBMCIP-lite.exe"
+      }
+    ],
+    "prerelease": false
+  },
+  {
+    "prerelease": false,
+    "assets": [
+      {
+        "url": "https://dl.fayoo.fun/v1.0.5/ezgetBMCIP-full.exe",
+        "desc": "自包含，免安装运行时，适合 U 盘现场运维",
+        "size": 71979657,
+        "name": "ezgetBMCIP-full.exe"
+      },
+      {
+        "url": "https://dl.fayoo.fun/v1.0.5/ezgetBMCIP-lite.exe",
+        "desc": "需要 .NET Desktop Runtime 8.0 x64，体积小",
+        "size": 1339990,
+        "name": "ezgetBMCIP-lite.exe"
+      }
+    ],
+    "version": "v1.0.5",
+    "date": "2026-05-24"
+  },
+  {
+    "prerelease": false,
+    "assets": [
+      {
+        "size": 71979655,
+        "desc": "自包含，免安装运行时，适合 U 盘现场运维",
+        "name": "ezgetBMCIP-full.exe",
+        "url": "https://dl.fayoo.fun/v1.0.4/ezgetBMCIP-full.exe"
+      },
+      {
+        "size": 1339990,
+        "desc": "需要 .NET Desktop Runtime 8.0 x64，体积小",
+        "name": "ezgetBMCIP-lite.exe",
+        "url": "https://dl.fayoo.fun/v1.0.4/ezgetBMCIP-lite.exe"
+      }
+    ],
+    "version": "v1.0.4",
+    "date": "2026-05-24"
+  }
+]
