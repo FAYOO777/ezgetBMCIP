@@ -91,6 +91,13 @@ jobs:
             throw "Lite exe is too small ($liteSize bytes). It is probably an apphost without bundled assemblies."
           }
 
+      - name: Extract release notes from tag
+        id: release_notes
+        shell: pwsh
+        run: |
+          git tag -l --format='%(contents)' "${{ github.ref_name }}" > release-notes.md
+          Write-Host "Release notes extracted"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -99,7 +106,7 @@ jobs:
           files: |
             publish/ezgetBMCIP-full.exe
             publish/ezgetBMCIP-lite.exe
-          generate_release_notes: true
+          body_path: release-notes.md
 
       # ── R2 upload ────────────────────────────────────────────────
 
