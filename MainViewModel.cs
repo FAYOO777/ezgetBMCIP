@@ -70,7 +70,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     //  UI bindings
     // ════════════════════════════════════════════════════════════════
 
-    private string _statusText = "BMC 管理口快速登录";
+    private string _statusText = "获取BMC的IP，应该可以变得更简单";
 
     public string StatusText
     {

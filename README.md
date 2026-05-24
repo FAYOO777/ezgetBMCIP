@@ -4,7 +4,7 @@
   <img src="ezgetBMCIP.svg" width="120" alt="ezgetBMCIP icon"/>
 </p>
 
-Windows WPF 桌面工具，用于笔记本直连服务器 IPMI/BMC 管理口后自动配置临时网段、分配 DHCP 地址并打开 BMC 页面。
+Windows WPF 桌面工具，获取BMC的IP，应该可以变得更简单。直连服务器 IPMI/BMC 管理口后自动配置临时网段、分配 DHCP 地址并打开 BMC 页面。
 
 ## 功能
 
