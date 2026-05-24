@@ -299,17 +299,6 @@
             .intro-card ul li {
                 margin-bottom: 2px;
             }
-            .intro-steps {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 6px 16px;
-                font-size: 13px;
-                color: var(--text-muted);
-            }
-            .intro-steps span {
-                font-weight: 600;
-                color: var(--accent);
-            }
 
             .hero-tag {
                 font-size: 28px;
@@ -642,26 +631,38 @@
       ${(latestStable.assets || []).map((a) => assetRow(a, true)).join("")}
     </div>
     <div class="intro-card">
-      <h3>关于 ezgetBMCIP</h3>
-      <p>服务器一般都带有一个独立的 BMC（基板管理控制器）芯片，通过 IPMI 管理口可以远程开关机、装系统、看屏幕。但新机器出厂时 BMC 的 IP 地址通常是 DHCP 自动获取的，你不知道它分到了什么地址，也就没法用浏览器打开管理页面。</p>
-      <p>ezgetBMCIP 解决的就是这个问题：用一根网线把你的电脑和服务器 IPMI 口直连，程序会自动在你的电脑上临时搭建一个 DHCP 服务器，等待 IPMI 上门来领 IP。一旦领到了，立刻帮你打开浏览器，直接进入 BMC 管理界面。</p>
-      <p>基于 WPF-UI 4.x 构建，原生 Win11 Mica 云母半透明材质，自动跟随系统亮色/暗色主题。</p>
-      <h3>工作流程</h3>
-      <div class="intro-steps">
-        <div><span>1.</span> 选择网卡 → 程序检测有线网卡列表</div>
-        <div><span>2.</span> 配置本机 → 网卡临时设为 10.77.77.1</div>
-        <div><span>3.</span> 启动 DHCP → 内嵌轻量 DHCP Server</div>
-        <div><span>4.</span> 插入网线 → 等待检测到 Link UP</div>
-        <div><span>5.</span> 等待 IPMI → 最多 3 分钟，获取到 IP</div>
-        <div><span>6.</span> 自动打开浏览器 → 进入 BMC 登录页面</div>
-      </div>
+      <p style="font-size:14px;">获取BMC的IP，应该可以变得更简单。直连服务器 IPMI/BMC 管理口，自动配网段、起 DHCP、开 BMC 页面，全程无需手动操作。</p>
+      <p style="font-size:13px;">基于 WPF-UI 4.x，Win11 Mica 云母材质，自动跟随系统亮/暗主题。</p>
+
       <h3>使用提示</h3>
+      <p>运行后选网卡 → 插网线 → 等自动打开 BMC 页面 → 登录操作 → 点"完成 / 退出"。</p>
       <ul>
-        <li>程序需要<strong>管理员权限</strong>才能修改网卡 IP 和启动 DHCP 服务，启动时会自动弹出 UAC 提权窗口，点"是"即可。</li>
-        <li>网线请插在服务器主板上标注 <strong>IPMI / BMC / MGMT</strong> 的专用管理口（通常是独立于普通网口的那个），不是插普通 LAN 口。</li>
-        <li>如果 3 分钟后还没反应，检查网线是否插对接口、服务器是否通电（IPMI 芯片在关机状态下通常也能工作）。</li>
-        <li>操作完成后点击右下角"完成 / 退出"，程序会自动关闭 DHCP 并把你的网卡恢复为 DHCP 模式，不影响正常上网。</li>
+        <li>程序退出前<strong>自动还原网卡配置</strong>，请尽量通过按钮关闭；直接关窗口也会触发还原。</li>
+        <li>需要<strong>管理员权限</strong>，启动时自动 UAC 提权。</li>
+        <li>确保网线插在服务器的 <strong>IPMI 专用管理口</strong>，不是普通网口。</li>
       </ul>
+
+      <h3>功能</h3>
+      <ul>
+        <li>🖥️ 检测有线网卡，多网卡时可选</li>
+        <li>📝 退出时自动还原网卡为 DHCP 模式</li>
+        <li>🔧 临时配置本机为 <code>10.77.77.1/255.255.255.0</code></li>
+        <li>📡 内嵌 DHCP Server（地址池 <code>10.77.77.100</code> ~ <code>10.77.77.200</code>）</li>
+        <li>🔗 WMI/CIM 轮询网卡链路状态</li>
+        <li>🌐 获取 IPMI IP 后自动调用浏览器打开 BMC 页面</li>
+        <li>🧹 关闭时自动停 DHCP、还原网卡</li>
+        <li>🪜 5 步可视化进度指示，失败时明确提示</li>
+        <li>🌗 自动跟随 Windows 系统亮/暗主题</li>
+      </ul>
+
+      <h3>工作流程</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;color:var(--text-muted);">
+        <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:var(--accent);white-space:nowrap;vertical-align:top;">1. 配置本机网卡</td><td style="padding:4px 0;">设为 10.77.77.1 → 启动 DHCP</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:var(--accent);white-space:nowrap;vertical-align:top;">2. 连接网线</td><td style="padding:4px 0;">等待网线插入 IPMI 管理口，检测 Link UP</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:var(--accent);white-space:nowrap;vertical-align:top;">3. 获取 IPMI IP</td><td style="padding:4px 0;">DHCP 监听 IPMI 请求，自动获取地址</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:var(--accent);white-space:nowrap;vertical-align:top;">4. 打开 BMC</td><td style="padding:4px 0;">浏览器自动打开 <code>http://&lt;IPMI IP&gt;</code></td></tr>
+        <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:var(--accent);white-space:nowrap;vertical-align:top;">5. 清理退出</td><td style="padding:4px 0;">关闭 DHCP Server，还原网卡为 DHCP</td></tr>
+      </table>
     </div>`;
 
                 // ── History tab ──
