@@ -22,21 +22,22 @@ jobs:
       - name: Restore
         run: dotnet restore
 
-      - name: Build
-        run: dotnet build -c Release --no-restore
+      # ── Full (self-contained) ─────────────────────────────────────
 
-      - name: Publish Full (self-contained)
+      - name: Build + Publish Full
         run: >
-          dotnet publish -c Release -r win-x64 --no-build
+          dotnet publish -c Release -r win-x64
           -p:PublishSingleFile=true
           -p:SelfContained=true
           -p:EnableCompressionInSingleFile=true
           -p:IncludeNativeLibrariesForSelfExtract=true
           -o publish/full
 
-      - name: Publish Lite (framework-dependent)
+      # ── Lite (framework-dependent) ───────────────────────────────
+
+      - name: Build + Publish Lite
         run: >
-          dotnet publish -c Release -r win-x64 --no-build
+          dotnet publish -c Release -r win-x64
           -p:PublishSingleFile=true
           -p:SelfContained=false
           -p:PublishReadyToRun=false
@@ -91,7 +92,6 @@ jobs:
           exit 0
 
       - name: Update versions.json
-        id: version_json
         shell: pwsh
         env:
           R2_PUBLIC_DOMAIN: ${{ secrets.R2_PUBLIC_DOMAIN }}
@@ -125,9 +125,15 @@ jobs:
 
           $versions = Get-Content versions.json -Raw | ConvertFrom-Json
           $list = [System.Collections.ArrayList]@($versions)
+          # Remove existing entry with same version to avoid duplicates
+          for ($i = $list.Count - 1; $i -ge 0; $i--) {
+            if ($list[$i].version -eq $tag) {
+              $list.RemoveAt($i)
+            }
+          }
           $list.Insert(0, $entry)
           ConvertTo-Json -InputObject $list -Depth 4 | Out-File -Encoding utf8 versions.json
-          Write-Host "Updated versions.json: $tag"
+          Write-Host "Updated versions.json: $tag (entries: $($list.Count))"
 
       - name: Upload exe files to R2
         shell: pwsh
