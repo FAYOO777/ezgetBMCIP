@@ -4,216 +4,298 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>ezgetBMCIP - 下载</title>
+        <!-- 引入现代化字体 Inter -->
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+            rel="stylesheet"
+        />
+
         <style>
             :root {
-                --bg: #ffffff;
-                --card: #f8f9fa;
-                --border: #e2e4e7;
-                --text: #1a1a2e;
-                --muted: #6b7280;
-                --accent: #007acc;
-                --success: #22863a;
-                --warn: #b08800;
-                --radius: 8px;
-                --shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-                --tab-bg: #f0f0f0;
+                /* 亮色模式调色板 */
+                --bg: #fafafa;
+                --card-bg: #ffffff;
+                --border: #e5e7eb;
+                --text-main: #111827;
+                --text-muted: #6b7280;
+                --accent: #0ea5e9;
+                --accent-hover: #0284c7;
+                --success: #10b981;
+                --success-bg: #d1fae5;
+                --warn: #d97706;
+                --warn-bg: #fef3c7;
+
+                --radius-lg: 16px;
+                --radius-md: 10px;
+                --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+                --shadow-md:
+                    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+                    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+                --shadow-lg:
+                    0 10px 25px -3px rgba(0, 0, 0, 0.05),
+                    0 4px 6px -2px rgba(0, 0, 0, 0.025);
+
+                --tab-track: #f3f4f6;
                 --tab-active: #ffffff;
             }
+
             @media (prefers-color-scheme: dark) {
                 :root {
-                    --bg: #1e1e1e;
-                    --card: #252526;
-                    --border: #3c3c3c;
-                    --text: #d4d4d4;
-                    --muted: #858585;
-                    --accent: #4daafc;
-                    --success: #4ec9b0;
-                    --warn: #cca700;
-                    --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-                    --tab-bg: #2d2d2d;
-                    --tab-active: #252526;
+                    /* 暗色模式调色板 */
+                    --bg: #0f172a;
+                    --card-bg: #1e293b;
+                    --border: #334155;
+                    --text-main: #f8fafc;
+                    --text-muted: #94a3b8;
+                    --accent: #38bdf8;
+                    --accent-hover: #7dd3fc;
+                    --success: #34d399;
+                    --success-bg: rgba(16, 185, 129, 0.15);
+                    --warn: #fbbf24;
+                    --warn-bg: rgba(217, 119, 6, 0.15);
+
+                    --shadow-lg: 0 10px 25px -3px rgba(0, 0, 0, 0.5);
+
+                    --tab-track: #0b1120;
+                    --tab-active: #1e293b;
                 }
             }
+
             * {
                 margin: 0;
                 padding: 0;
                 box-sizing: border-box;
             }
+
             body {
                 font-family:
-                    -apple-system, BlinkMacSystemFont, "Segoe UI",
-                    "Microsoft YaHei", sans-serif;
-                background: var(--bg);
-                color: var(--text);
+                    "Inter",
+                    -apple-system,
+                    BlinkMacSystemFont,
+                    "Segoe UI",
+                    "Microsoft YaHei",
+                    sans-serif;
+                background-color: var(--bg);
+                color: var(--text-main);
                 line-height: 1.6;
                 min-height: 100vh;
-            }
-            .container {
-                max-width: 720px;
-                margin: 0 auto;
-                padding: 40px 20px 60px;
+                /* 顶部添加一个微弱的光晕背景 */
+                background-image: radial-gradient(
+                    circle at 50% 0%,
+                    rgba(14, 165, 233, 0.1) 0%,
+                    transparent 50%
+                );
+                background-repeat: no-repeat;
+                -webkit-font-smoothing: antialiased;
             }
 
+            .container {
+                max-width: 760px;
+                margin: 0 auto;
+                padding: 60px 24px 80px;
+            }
+
+            /* --- Header --- */
             header {
                 text-align: center;
-                margin-bottom: 32px;
+                margin-bottom: 40px;
+                animation: fadeDown 0.6s ease-out;
             }
             header svg {
-                width: 64px;
-                height: 64px;
-                margin-bottom: 12px;
+                width: 72px;
+                height: 72px;
+                margin-bottom: 16px;
+                filter: drop-shadow(0 8px 16px rgba(14, 165, 233, 0.2));
+                transition: transform 0.3s ease;
+            }
+            header svg:hover {
+                transform: scale(1.05) rotate(-3deg);
             }
             header h1 {
-                font-size: 24px;
-                font-weight: 700;
+                font-size: 32px;
+                font-weight: 800;
+                letter-spacing: -0.02em;
+                margin-bottom: 8px;
+                background: linear-gradient(
+                    135deg,
+                    var(--text-main),
+                    var(--text-muted)
+                );
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
             }
             header p {
-                color: var(--muted);
-                font-size: 14px;
-                margin-top: 4px;
+                color: var(--text-muted);
+                font-size: 15px;
+                font-weight: 400;
             }
 
-            .tabs {
+            /* --- Tabs --- */
+            .tabs-wrapper {
                 display: flex;
-                gap: 0;
-                margin-bottom: 20px;
-                border-radius: var(--radius);
-                overflow: hidden;
+                justify-content: center;
+                margin-bottom: 32px;
+            }
+            .tabs {
+                display: inline-flex;
+                background: var(--tab-track);
+                padding: 4px;
+                border-radius: 12px;
                 border: 1px solid var(--border);
             }
             .tab-btn {
-                flex: 1;
-                padding: 10px 0;
+                padding: 8px 24px;
                 border: none;
-                background: var(--tab-bg);
-                color: var(--muted);
+                background: transparent;
+                color: var(--text-muted);
                 font-size: 14px;
                 font-weight: 600;
+                border-radius: 8px;
                 cursor: pointer;
-                transition:
-                    background 0.15s,
-                    color 0.15s;
+                transition: all 0.2s ease;
                 font-family: inherit;
+            }
+            .tab-btn:hover {
+                color: var(--text-main);
             }
             .tab-btn.active {
                 background: var(--tab-active);
-                color: var(--accent);
-            }
-            .tab-btn + .tab-btn {
-                border-left: 1px solid var(--border);
+                color: var(--text-main);
+                box-shadow: var(--shadow-sm);
             }
 
+            /* --- Panel & Animations --- */
             .tab-panel {
                 display: none;
             }
             .tab-panel.active {
                 display: block;
+                animation: fadeInUp 0.4s ease-out forwards;
+            }
+
+            @keyframes fadeInUp {
+                from {
+                    opacity: 0;
+                    transform: translateY(10px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+            @keyframes fadeDown {
+                from {
+                    opacity: 0;
+                    transform: translateY(-15px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+
+            /* --- Cards --- */
+            .hero-card,
+            .version-card {
+                background: var(--card-bg);
+                border-radius: var(--radius-lg);
+                padding: 32px;
+                margin-bottom: 24px;
+                border: 1px solid var(--border);
+                box-shadow: var(--shadow-lg);
+                transition:
+                    transform 0.2s ease,
+                    box-shadow 0.2s ease;
             }
 
             .hero-card {
-                background: var(--card);
-                border: 2px solid var(--accent);
-                border-radius: var(--radius);
-                padding: 28px 24px;
-                margin-bottom: 20px;
-                box-shadow: var(--shadow);
+                /* 突出强调最新版，顶部加一条渐变强调线 */
+                position: relative;
+                overflow: hidden;
             }
-            .hero-tag {
-                font-size: 22px;
-                font-weight: 700;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                margin-bottom: 6px;
-            }
-            .hero-date {
-                color: var(--muted);
-                font-size: 13px;
-                margin-bottom: 18px;
-            }
-            .hero-asset {
-                display: flex;
-                align-items: center;
-                gap: 14px;
-                padding: 14px 0;
-            }
-            .hero-asset + .hero-asset {
-                border-top: 1px solid var(--border);
-            }
-            .hero-asset-info {
-                flex: 1;
-            }
-            .hero-asset-name {
-                font-weight: 600;
-                font-size: 15px;
-            }
-            .hero-asset-desc {
-                color: var(--muted);
-                font-size: 12px;
-                margin-top: 2px;
-            }
-            .hero-asset-size {
-                color: var(--muted);
-                font-size: 12px;
+            .hero-card::before {
+                content: "";
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 4px;
+                background: linear-gradient(
+                    90deg,
+                    var(--accent),
+                    var(--success)
+                );
             }
 
             .version-card {
-                background: var(--card);
-                border: 1px solid var(--border);
-                border-radius: var(--radius);
-                padding: 20px 24px;
-                margin-bottom: 12px;
-                box-shadow: var(--shadow);
+                padding: 24px 32px;
+                box-shadow: var(--shadow-md);
             }
+            .version-card:hover {
+                transform: translateY(-2px);
+                box-shadow: var(--shadow-lg);
+            }
+
+            /* --- Card Content --- */
+            .hero-tag {
+                font-size: 28px;
+                font-weight: 800;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                margin-bottom: 8px;
+            }
+            .hero-date,
+            .version-date {
+                color: var(--text-muted);
+                font-size: 14px;
+            }
+            .hero-date {
+                margin-bottom: 24px;
+            }
+
             .version-header {
                 display: flex;
                 align-items: center;
-                gap: 10px;
-                margin-bottom: 14px;
-                padding-bottom: 12px;
-                border-bottom: 1px solid var(--border);
+                gap: 12px;
+                margin-bottom: 20px;
+                padding-bottom: 16px;
+                border-bottom: 1px dashed var(--border);
             }
             .version-tag {
-                font-size: 18px;
+                font-size: 20px;
                 font-weight: 700;
             }
-            .version-date {
-                color: var(--muted);
-                font-size: 13px;
-            }
+
+            /* --- Badges --- */
             .badge {
-                font-size: 11px;
+                font-size: 12px;
                 font-weight: 600;
-                padding: 2px 8px;
-                border-radius: 10px;
+                padding: 4px 10px;
+                border-radius: 20px;
                 letter-spacing: 0.5px;
             }
             .badge-stable {
-                background: #d4edda;
-                color: #155724;
+                background: var(--success-bg);
+                color: var(--success);
             }
             .badge-beta {
-                background: #fff3cd;
-                color: #856404;
-            }
-            @media (prefers-color-scheme: dark) {
-                .badge-stable {
-                    background: #1a3a2a;
-                    color: #4ec9b0;
-                }
-                .badge-beta {
-                    background: #3a2e0a;
-                    color: #cca700;
-                }
+                background: var(--warn-bg);
+                color: var(--warn);
             }
 
-            .asset-row {
+            /* --- Assets List --- */
+            .asset-row,
+            .hero-asset {
                 display: flex;
                 align-items: center;
-                gap: 14px;
-                padding: 10px 0;
+                gap: 16px;
+                padding: 16px 0;
             }
-            .asset-row + .asset-row {
+            .asset-row + .asset-row,
+            .hero-asset + .hero-asset {
                 border-top: 1px solid var(--border);
             }
             .asset-info {
@@ -222,80 +304,87 @@
             }
             .asset-name {
                 font-weight: 600;
-                font-size: 14px;
+                font-size: 16px;
+                color: var(--text-main);
+                margin-bottom: 4px;
             }
             .asset-desc {
-                color: var(--muted);
-                font-size: 12px;
-                margin-top: 2px;
+                color: var(--text-muted);
+                font-size: 13px;
+            }
+            .asset-meta {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                margin-top: 6px;
             }
             .asset-size {
-                color: var(--muted);
+                color: var(--text-muted);
                 font-size: 12px;
+                background: var(--tab-track);
+                padding: 2px 8px;
+                border-radius: 6px;
             }
             .runtime-notice {
-                font-size: 11px;
+                font-size: 12px;
                 color: var(--warn);
-                margin-top: 4px;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+            }
+            .runtime-notice a {
+                color: inherit;
+                text-decoration: underline;
+                text-underline-offset: 2px;
             }
 
+            /* --- Buttons --- */
             .dl-btn {
                 display: inline-flex;
                 align-items: center;
-                gap: 6px;
+                gap: 8px;
                 background: var(--accent);
                 color: #fff;
                 border: none;
-                border-radius: 5px;
-                padding: 10px 20px;
+                border-radius: var(--radius-md);
+                padding: 12px 24px;
                 font-size: 14px;
                 font-weight: 600;
                 cursor: pointer;
                 text-decoration: none;
                 white-space: nowrap;
-                transition: opacity 0.15s;
+                transition: all 0.2s ease;
+                box-shadow: 0 4px 14px 0 rgba(14, 165, 233, 0.39);
             }
             .dl-btn:hover {
-                opacity: 0.85;
+                background: var(--accent-hover);
+                transform: translateY(-2px);
+                box-shadow: 0 6px 20px rgba(14, 165, 233, 0.23);
+            }
+            .dl-btn:active {
+                transform: translateY(0);
             }
             .dl-btn-sm {
                 padding: 8px 16px;
                 font-size: 13px;
+                box-shadow: none;
+                background: var(--tab-track);
+                color: var(--text-main);
+            }
+            .dl-btn-sm:hover {
+                background: var(--border);
+                box-shadow: none;
             }
 
-            .error-box {
-                background: var(--card);
-                border: 1px solid var(--border);
-                border-radius: var(--radius);
-                padding: 24px;
-                text-align: center;
-            }
-            .error-box p {
-                margin-bottom: 12px;
-            }
-            .error-box a {
-                color: var(--accent);
-            }
-
-            footer {
-                text-align: center;
-                margin-top: 40px;
-                color: var(--muted);
-                font-size: 12px;
-            }
-            footer a {
-                color: var(--accent);
-                text-decoration: none;
-            }
-
+            /* --- Loading & Error --- */
             .spinner {
                 display: inline-block;
-                width: 20px;
-                height: 20px;
-                border: 2px solid var(--border);
+                width: 24px;
+                height: 24px;
+                border: 3px solid var(--border);
                 border-top-color: var(--accent);
                 border-radius: 50%;
-                animation: spin 0.6s linear infinite;
+                animation: spin 0.8s cubic-bezier(0.5, 0, 0.5, 1) infinite;
             }
             @keyframes spin {
                 to {
@@ -304,21 +393,40 @@
             }
             #loading {
                 text-align: center;
-                padding: 40px 0;
+                padding: 60px 0;
+            }
+            .error-box {
+                background: var(--card-bg);
+                border: 1px solid var(--warn);
+                border-radius: var(--radius-lg);
+                padding: 32px;
+                text-align: center;
+                box-shadow: var(--shadow-md);
+            }
+            .error-box p {
+                margin-bottom: 12px;
+            }
+            .error-box a {
+                color: var(--accent);
+                text-decoration: none;
+                font-weight: 600;
             }
 
-            .latest-icon {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                width: 40px;
-                height: 40px;
-                background: var(--accent);
-                border-radius: 50%;
-                color: #fff;
-                font-size: 18px;
-                font-weight: 700;
-                flex-shrink: 0;
+            /* --- Footer --- */
+            footer {
+                text-align: center;
+                margin-top: 60px;
+                color: var(--text-muted);
+                font-size: 13px;
+            }
+            footer a {
+                color: var(--text-muted);
+                text-decoration: none;
+                font-weight: 500;
+                transition: color 0.2s;
+            }
+            footer a:hover {
+                color: var(--accent);
             }
         </style>
     </head>
@@ -339,15 +447,15 @@
                             y2="117"
                             gradientUnits="userSpaceOnUse"
                         >
-                            <stop stop-color="#007ACC" />
-                            <stop offset="1" stop-color="#2EA043" />
+                            <stop stop-color="#0EA5E9" />
+                            <stop offset="1" stop-color="#10B981" />
                         </linearGradient>
                     </defs>
                     <path
                         d="M340 90c15 0 27 12 27 27s-12 27-27 27H149c-15 0-27-12-27-27s12-27 27-27h191Z"
                         fill="url(#g)"
                     />
-                    <circle cx="117" cy="117" r="117" fill="#007ACC" />
+                    <circle cx="117" cy="117" r="117" fill="#0EA5E9" />
                     <circle
                         cx="117"
                         cy="117"
@@ -355,7 +463,7 @@
                         fill="white"
                         opacity=".35"
                     />
-                    <circle cx="372" cy="117" r="85" fill="#2EA043" />
+                    <circle cx="372" cy="117" r="85" fill="#10B981" />
                     <circle
                         cx="372"
                         cy="117"
@@ -368,13 +476,18 @@
                 <p>BMC 管理口快速登录工具</p>
             </header>
 
-            <div class="tabs">
-                <button class="tab-btn active" onclick="switchTab('latest')">
-                    最新版本
-                </button>
-                <button class="tab-btn" onclick="switchTab('history')">
-                    历史版本
-                </button>
+            <div class="tabs-wrapper">
+                <div class="tabs">
+                    <button
+                        class="tab-btn active"
+                        onclick="switchTab('latest')"
+                    >
+                        最新版本
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('history')">
+                        历史版本
+                    </button>
+                </div>
             </div>
 
             <div id="loading"><div class="spinner"></div></div>
@@ -384,7 +497,12 @@
             <div id="error-panel" style="display: none"></div>
 
             <footer>
-                <a href="https://github.com/FAYOO777/ezgetBMCIP">GitHub</a>
+                <a
+                    href="https://github.com/FAYOO777/ezgetBMCIP"
+                    target="_blank"
+                    rel="noopener"
+                    >在 GitHub 上查看源码</a
+                >
             </footer>
         </div>
 
@@ -405,16 +523,26 @@
 
             function assetRow(asset, large) {
                 const isLite = asset.name.includes("lite");
+                // 将 size 和 notice 放在同一行的 meta 区域
                 return `<div class="${large ? "hero-asset" : "asset-row"}">
-    <div class="${large ? "hero-asset-info" : "asset-info"}">
-      <div class="${large ? "hero-asset-name" : "asset-name"}">${asset.name}</div>
-      <div class="${large ? "hero-asset-desc" : "asset-desc"}">${asset.desc}</div>
-      <div class="${large ? "hero-asset-size" : "asset-size"}">${fmtSize(asset.size)}</div>
-      ${large && isLite ? `<div class="runtime-notice">⚠ 需要 <a href="https://dotnet.microsoft.com/en-us/download/dotnet/8.0" style="color:inherit">.NET Desktop Runtime 8.0 x64</a> — 从微软官网下载</div>` : ""}
+    <div class="asset-info">
+      <div class="asset-name">${asset.name}</div>
+      <div class="asset-desc">${asset.desc}</div>
+      <div class="asset-meta">
+        <span class="asset-size">${fmtSize(asset.size)}</span>
+        ${
+            large && isLite
+                ? `<span class="runtime-notice">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            需要 <a href="https://dotnet.microsoft.com/en-us/download/dotnet/8.0">.NET Desktop Runtime 8.0</a>
+        </span>`
+                : ""
+        }
+      </div>
     </div>
     <a class="dl-btn ${large ? "" : "dl-btn-sm"}" href="${asset.url}" download>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 16v4h16v-4"/></svg>
-      下载
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      ${large ? "下载" : ""}
     </a>
   </div>`;
             }
@@ -434,7 +562,6 @@
                 latestPanel.innerHTML = `
     <div class="hero-card">
       <div class="hero-tag">
-        <span class="latest-icon">↓</span>
         <span>${latestStable.version}</span>
         <span class="badge badge-stable">最新稳定版</span>
       </div>
@@ -450,8 +577,8 @@
     <div class="version-card">
       <div class="version-header">
         <span class="version-tag">${v.version}</span>
-        <span class="version-date">${v.date}</span>
-        ${v.prerelease ? '<span class="badge badge-beta">pre-release</span>' : '<span class="badge badge-stable">stable</span>'}
+        ${v.prerelease ? '<span class="badge badge-beta">Pre-release</span>' : '<span class="badge badge-stable">Stable</span>'}
+        <span class="version-date" style="margin-left: auto;">${v.date}</span>
       </div>
       ${(v.assets || []).map((a) => assetRow(a, false)).join("")}
     </div>`,
@@ -462,9 +589,11 @@
             function showError(msg) {
                 document.getElementById("loading").style.display = "none";
                 document.getElementById("error-panel").style.display = "block";
-                document.getElementById("error-panel").innerHTML =
-                    `<div class="error-box">
-    <p>⚠ ${msg}</p><p><a href="${GITHUB_RELEASES}">前往 GitHub Releases 手动下载</a></p></div>`;
+                document.getElementById("error-panel").innerHTML = `
+    <div class="error-box">
+      <p>⚠ ${msg}</p>
+      <p><a href="${GITHUB_RELEASES}">前往 GitHub Releases 手动下载</a></p>
+    </div>`;
             }
 
             function switchTab(name) {
@@ -477,9 +606,13 @@
                                 (i === 1 && name === "history"),
                         ),
                     );
-                document
-                    .querySelectorAll(".tab-panel")
-                    .forEach((p) => p.classList.remove("active"));
+
+                // 重新触发 CSS 动画机制
+                document.querySelectorAll(".tab-panel").forEach((p) => {
+                    p.classList.remove("active");
+                    // 强制重绘以触发动画
+                    void p.offsetWidth;
+                });
                 document
                     .getElementById(name + "-panel")
                     .classList.add("active");
