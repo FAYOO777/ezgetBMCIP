@@ -65,10 +65,58 @@
                 <Border Style="{StaticResource CardBorderStyle}" Padding="24,14">
                     <StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                            <Image Source="{StaticResource AppIconDrawing}"
-                                   Width="28" Height="28" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                            <!-- Glow host: icon + light ring -->
+                            <Grid Width="44" Height="44" Margin="0,0,12,0"
+                                  VerticalAlignment="Center">
+                                <!-- Glow ring -->
+                                <Ellipse x:Name="HeroGlow" Width="40" Height="40"
+                                         Fill="{StaticResource VsAccentBrush}" Opacity="0.12"/>
+                                <!-- Icon -->
+                                <Image Source="{StaticResource AppIconDrawing}"
+                                       Width="28" Height="28"
+                                       RenderTransformOrigin="0.5,0.5">
+                                    <Image.RenderTransform>
+                                        <ScaleTransform x:Name="HeroScale" ScaleX="1" ScaleY="1"/>
+                                    </Image.RenderTransform>
+                                </Image>
+                                <Grid.Triggers>
+                                    <EventTrigger RoutedEvent="Loaded">
+                                        <BeginStoryboard>
+                                            <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                                <DoubleAnimation
+                                                    Storyboard.TargetName="HeroScale"
+                                                    Storyboard.TargetProperty="ScaleX"
+                                                    From="1.0" To="1.04"
+                                                    Duration="0:0:2">
+                                                    <DoubleAnimation.EasingFunction>
+                                                        <SineEase EasingMode="EaseInOut"/>
+                                                    </DoubleAnimation.EasingFunction>
+                                                </DoubleAnimation>
+                                                <DoubleAnimation
+                                                    Storyboard.TargetName="HeroScale"
+                                                    Storyboard.TargetProperty="ScaleY"
+                                                    From="1.0" To="1.04"
+                                                    Duration="0:0:2">
+                                                    <DoubleAnimation.EasingFunction>
+                                                        <SineEase EasingMode="EaseInOut"/>
+                                                    </DoubleAnimation.EasingFunction>
+                                                </DoubleAnimation>
+                                                <DoubleAnimation
+                                                    Storyboard.TargetName="HeroGlow"
+                                                    Storyboard.TargetProperty="Opacity"
+                                                    From="0.12" To="0.32"
+                                                    Duration="0:0:2">
+                                                    <DoubleAnimation.EasingFunction>
+                                                        <SineEase EasingMode="EaseInOut"/>
+                                                    </DoubleAnimation.EasingFunction>
+                                                </DoubleAnimation>
+                                            </Storyboard>
+                                        </BeginStoryboard>
+                                    </EventTrigger>
+                                </Grid.Triggers>
+                            </Grid>
                             <TextBlock Text="{Binding StatusText}" FontSize="26" FontWeight="Bold"
-                                       Foreground="{StaticResource VsTextBrush}" VerticalAlignment="Center"/>
+                                       Foreground="{StaticResource VsAccentBrush}" VerticalAlignment="Center"/>
                         </StackPanel>
                         <TextBlock Text="{Binding DetailText}" FontSize="14"
                                    Foreground="{StaticResource VsMutedBrush}"/>
@@ -82,6 +130,7 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -89,20 +138,24 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
+                        <!-- Header always visible -->
                         <TextBlock Grid.Row="0" Grid.ColumnSpan="3" Text="目标网卡"
                                    FontSize="14" FontWeight="Bold"
                                    Foreground="{StaticResource VsAccentBrush}" Margin="0,0,0,6"/>
 
+                        <!-- ── Default state: before flow starts ── -->
                         <TextBlock Grid.Row="1" Grid.Column="0" Text="选择网卡"
                                    VerticalAlignment="Center" FontSize="14"
-                                   Foreground="{StaticResource VsMutedBrush}" Margin="0,0,14,0"/>
+                                   Foreground="{StaticResource VsMutedBrush}" Margin="0,0,14,0"
+                                   Visibility="{Binding IsFlowStarted, Converter={StaticResource BoolToVisInv}}"/>
 
                         <ComboBox Grid.Row="1" Grid.Column="1"
                                   ItemsSource="{Binding Adapters}"
                                   SelectedItem="{Binding SelectedAdapterItem}"
                                   DisplayMemberPath="DisplayName"
                                   IsEnabled="{Binding AdapterSelectionEnabled}"
-                                  Height="38" VerticalAlignment="Center"/>
+                                  Height="38" VerticalAlignment="Center"
+                                  Visibility="{Binding IsFlowStarted, Converter={StaticResource BoolToVisInv}}"/>
 
                         <Button Grid.Row="1" Grid.Column="2"
                                 Content="开始"
@@ -110,12 +163,26 @@
                                 Background="{StaticResource VsAccentBrush}"
                                 IsEnabled="{Binding StartButtonEnabled}"
                                 Width="96" Height="38" Margin="14,0,0,0"
-                                VerticalAlignment="Center"/>
+                                VerticalAlignment="Center"
+                                Visibility="{Binding IsFlowStarted, Converter={StaticResource BoolToVisInv}}"/>
 
                         <TextBlock Grid.Row="2" Grid.ColumnSpan="3"
                                    Text="请选择你准备用网线连接服务器的那块网卡"
                                    FontSize="12" Foreground="{StaticResource VsMutedBrush}"
-                                   Margin="0,8,0,0"/>
+                                   Margin="0,8,0,0"
+                                   Visibility="{Binding IsFlowStarted, Converter={StaticResource BoolToVisInv}}"/>
+
+                        <!-- ── Running state: after flow starts ── -->
+                        <StackPanel Grid.Row="1" Grid.ColumnSpan="3"
+                                    Visibility="{Binding IsFlowStarted, Converter={StaticResource BoolToVis}}"
+                                    Orientation="Horizontal" Margin="0,4,0,0">
+                            <Ellipse Width="10" Height="10" Fill="{StaticResource VsSuccessBrush}"
+                                     VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <TextBlock Text="{Binding AdapterCardLine1}"
+                                       FontSize="14" FontWeight="Bold"
+                                       Foreground="{StaticResource VsTextBrush}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
                     </Grid>
                 </Border>
 
@@ -124,27 +191,22 @@
                     <StackPanel HorizontalAlignment="Center">
 
                         <!-- Icon -->
-                        <TextBlock HorizontalAlignment="Center" FontSize="44" Margin="0,0,0,10"
-                                   Foreground="{Binding BadgeState, Converter={StaticResource TitleFgConv}}">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding BadgeState}" Value="Done">
-                                            <Setter Property="Text" Value="✓"/>
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding BadgeState}" Value="Failed">
-                                            <Setter Property="Text" Value="!"/>
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding BadgeState}" Value="Active">
-                                            <Setter Property="Text" Value="▭"/>
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding BadgeState}" Value="Pending">
-                                            <Setter Property="Text" Value="▭"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
+                        <Grid Width="56" Height="56" HorizontalAlignment="Center" Margin="0,0,0,10">
+                            <Ellipse Width="56" Height="56"
+                                     Fill="{Binding BadgeState, Converter={StaticResource CircleFillConv}}"
+                                     Stroke="{Binding BadgeState, Converter={StaticResource CircleStrokeConv}}"
+                                     StrokeThickness="3"/>
+                            <!-- Checkmark for Done -->
+                            <Path Data="M15,28 L25,38 L42,18"
+                                  Stroke="White" StrokeThickness="3"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  Visibility="{Binding BadgeState, Converter={StaticResource CheckVisConv}}"/>
+                            <!-- Cross for Failed -->
+                            <Path Data="M17,17 L39,39 M39,17 L17,39"
+                                  Stroke="White" StrokeThickness="3"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  Visibility="{Binding BadgeState, Converter={StaticResource CrossVisConv}}"/>
+                        </Grid>
 
                         <!-- Title -->
                         <TextBlock Text="{Binding CurrentStep.Title}" FontSize="20" FontWeight="Bold"

@@ -20,14 +20,14 @@ Windows WPF 桌面工具，用于笔记本直连服务器 IPMI/BMC 管理口后�
 | 版本 | 文件名 | 大小 | 需要安装运行时？ |
 |---|---|---|---|
 | **Full** | `ezgetBMCIP-full.exe` | ~65 MB | 不需要 |
-| **Lite** | `ezgetBMCIP-lite.exe` | ~2 MB | 需要 .NET Desktop Runtime 10 x64 |
+| **Lite** | `ezgetBMCIP-lite.exe` | ~1.3 MB | 需要 .NET Desktop Runtime 8.0 x64 |
 
 - **Full 版**：适合现场运维，插 U 盘直接运行。
 - **Lite 版**：适合已安装运行时的机器，下载快。
 
 ### Lite 版运行前
-请先安装 Microsoft .NET Desktop Runtime 10 x64：
-https://dotnet.microsoft.com/en-us/download/dotnet/10.0
+请先安装 Microsoft .NET Desktop Runtime 8.0 x64：
+https://dotnet.microsoft.com/en-us/download/dotnet/8.0
 
 > 注意：需要的是 **Desktop Runtime**，不是 ASP.NET Core Runtime 或普通 .NET Runtime。
 

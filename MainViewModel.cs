@@ -141,6 +141,30 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set { _isCleanupDone = value; OnPropertyChanged(); }
     }
 
+    private bool _isFlowStarted;
+
+    public bool IsFlowStarted
+    {
+        get => _isFlowStarted;
+        set { _isFlowStarted = value; OnPropertyChanged(); }
+    }
+
+    private string _adapterCardLine1 = "";
+
+    public string AdapterCardLine1
+    {
+        get => _adapterCardLine1;
+        set { _adapterCardLine1 = value; OnPropertyChanged(); }
+    }
+
+    private string _adapterCardLine2 = "";
+
+    public string AdapterCardLine2
+    {
+        get => _adapterCardLine2;
+        set { _adapterCardLine2 = value; OnPropertyChanged(); }
+    }
+
     // ════════════════════════════════════════════════════════════════
     //  Commands
     // ════════════════════════════════════════════════════════════════
@@ -198,6 +222,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _selectedAdapter = SelectedAdapterItem;
         AdapterSelectionEnabled = false;
         StartButtonEnabled = false;
+        IsFlowStarted = true;
+        AdapterCardLine1 = "✓ " + _selectedAdapter.DisplayName;
+        AdapterCardLine2 = "";
         _flowCts = new CancellationTokenSource();
 
         try
@@ -385,6 +412,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             StepState.Failed => "! 失败",
             _ => "等待中"
         };
+
         OnPropertyChanged(nameof(CurrentStep));
     }
 
