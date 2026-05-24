@@ -22,6 +22,11 @@ jobs:
       - name: Restore
         run: dotnet restore
 
+      - name: Clean publish output
+        shell: pwsh
+        run: |
+          Remove-Item publish -Recurse -Force -ErrorAction SilentlyContinue
+
       # ── Full (self-contained) ─────────────────────────────────────
 
       - name: Build + Publish Full
@@ -47,8 +52,29 @@ jobs:
       - name: Rename artifacts
         shell: pwsh
         run: |
+          $unexpectedLiteFiles = Get-ChildItem publish/lite -File | Where-Object {
+            $_.Name -notin @("ezgetBMCIP.exe", "ezgetBMCIP.pdb")
+          }
+          if ($unexpectedLiteFiles.Count -gt 0) {
+            $names = ($unexpectedLiteFiles | ForEach-Object Name) -join ", "
+            throw "Lite publish is not a single-file app. Unexpected files: $names"
+          }
+
+          $liteText = [System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes("publish/lite/ezgetBMCIP.exe"))
+          if ($liteText.Contains('"includedFrameworks"')) {
+            throw "Lite publish contains includedFrameworks. Clean/rebuild without reusing self-contained build output."
+          }
+          if (-not $liteText.Contains('"frameworks"')) {
+            throw "Lite publish does not contain framework-dependent runtime config."
+          }
+
           Copy-Item publish/full/ezgetBMCIP.exe publish/ezgetBMCIP-full.exe
           Copy-Item publish/lite/ezgetBMCIP.exe publish/ezgetBMCIP-lite.exe
+
+          $liteSize = (Get-Item publish/ezgetBMCIP-lite.exe).Length
+          if ($liteSize -lt 1000000) {
+            throw "Lite exe is too small ($liteSize bytes). It is probably an apphost without bundled assemblies."
+          }
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

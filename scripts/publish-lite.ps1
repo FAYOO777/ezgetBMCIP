@@ -1,26 +1,50 @@
 # Publish lite (framework-dependent) version
 # Output: publish\ezgetBMCIP-lite.exe  (~2 MB)
-# Requires .NET Desktop Runtime 10 x64 on target machine.
+# Requires .NET Desktop Runtime 8 x64 on target machine.
 
 $ErrorActionPreference = "Stop"
 
 Write-Host "Building lite version..." -ForegroundColor Cyan
+
+$publishDir = "publish\lite"
+$outputExe = "publish\ezgetBMCIP-lite.exe"
+
+if (Test-Path $publishDir) {
+  Remove-Item $publishDir -Recurse -Force
+}
 
 dotnet publish -c Release -r win-x64 `
   -p:PublishSingleFile=true `
   -p:SelfContained=false `
   -p:PublishReadyToRun=false `
   -p:EnableCompressionInSingleFile=false `
-  -o publish\lite
+  -o $publishDir
 
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
 
+$runtimeFiles = Get-ChildItem $publishDir -File | Where-Object {
+  $_.Name -notin @("ezgetBMCIP.exe", "ezgetBMCIP.pdb")
+}
+
+if ($runtimeFiles.Count -gt 0) {
+  $names = ($runtimeFiles | ForEach-Object Name) -join ", "
+  throw "Lite publish is not a single-file app. Unexpected files: $names"
+}
+
+$exeText = [System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes("$publishDir\ezgetBMCIP.exe"))
+if ($exeText.Contains('"includedFrameworks"')) {
+  throw "Lite publish contains includedFrameworks. Clean/rebuild without reusing self-contained build output."
+}
+if (-not $exeText.Contains('"frameworks"')) {
+  throw "Lite publish does not contain framework-dependent runtime config."
+}
+
 # Rename for clarity
-Copy-Item publish\lite\ezgetBMCIP.exe publish\ezgetBMCIP-lite.exe -Force
+Copy-Item "$publishDir\ezgetBMCIP.exe" $outputExe -Force
 
 Write-Host ""
-Write-Host "Done: publish\ezgetBMCIP-lite.exe" -ForegroundColor Green
-Write-Host "Size: $((Get-Item publish\ezgetBMCIP-lite.exe).Length / 1KB) KB" -ForegroundColor Green
+Write-Host "Done: $outputExe" -ForegroundColor Green
+Write-Host "Size: $((Get-Item $outputExe).Length / 1KB) KB" -ForegroundColor Green
 Write-Host ""
-Write-Host "WARNING: lite version requires .NET Desktop Runtime 10 x64 on target machine." -ForegroundColor Yellow
-Write-Host "Download: https://dotnet.microsoft.com/en-us/download/dotnet/10.0" -ForegroundColor Yellow
+Write-Host "WARNING: lite version requires .NET Desktop Runtime 8 x64 on target machine." -ForegroundColor Yellow
+Write-Host "Download: https://dotnet.microsoft.com/en-us/download/dotnet/8.0/runtime" -ForegroundColor Yellow
