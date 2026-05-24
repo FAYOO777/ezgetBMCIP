@@ -153,13 +153,13 @@ jobs:
                 name = "ezgetBMCIP-full.exe"
                 url = "https://$domain/$tag/ezgetBMCIP-full.exe"
                 size = [long]$fullSize
-                desc = "自包含，免安装运行时，适合 U 盘现场运维"
+                desc = "完整打包，开箱即用，无需额外环境"
               },
               @{
                 name = "ezgetBMCIP-lite.exe"
                 url = "https://$domain/$tag/ezgetBMCIP-lite.exe"
                 size = [long]$liteSize
-                desc = "需要 .NET Desktop Runtime 8.0 x64，体积小"
+                desc = "体积小，下载快，需要系统装有 .NET Desktop Runtime 8.0"
               }
             )
           }
