@@ -6,6 +6,10 @@
 
 Windows WPF 桌面工具，获取BMC的IP，应该可以变得更简单。直连服务器 IPMI/BMC 管理口后自动配置临时网段、分配 DHCP 地址并打开 BMC 页面。
 
+## 界面
+
+基于 [WPF-UI](https://github.com/lepoco/wpfui) 4.x 构建，原生 Win11 Mica 材质，自动跟随系统亮/暗主题。
+
 ## 功能
 
 - 启动时检测管理员权限，不足时自动 UAC 提权重启。
@@ -16,6 +20,8 @@ Windows WPF 桌面工具，获取BMC的IP，应该可以变得更简单。直连
 - 通过 WMI/CIM 查询 `Win32_NetworkAdapter` 轮询链路状态。
 - 收到 IPMI DHCP 请求后自动打开 `http://<IPMI IP>`。
 - 点击"完成 / 退出"或关闭窗口时都会关闭 DHCP Server 并还原网卡。
+- 5 步可视化进度指示，失败时明确提示原因。
+- 自动跟随 Windows 系统主题（亮色/暗色），无需手动切换。
 
 ## 下载
 

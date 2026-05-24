@@ -283,7 +283,23 @@
                 font-size: 14px;
             }
             .hero-date {
-                margin-bottom: 24px;
+                margin-bottom: 12px;
+            }
+            .hero-notes,
+            .version-notes {
+                color: var(--text-muted);
+                font-size: 13px;
+                line-height: 1.6;
+                margin-bottom: 20px;
+                padding: 10px 14px;
+                background: var(--bg-raised);
+                border-radius: 6px;
+                border-left: 3px solid var(--accent);
+            }
+            .version-notes {
+                font-size: 12px;
+                margin-bottom: 12px;
+                border-left-color: var(--text-muted);
             }
 
             .version-header {
@@ -597,6 +613,7 @@
         <span class="badge badge-stable">最新稳定版</span>
       </div>
       <div class="hero-date">发布于 ${latestStable.date}</div>
+      ${latestStable.notes ? `<div class="hero-notes">${latestStable.notes.replace(/\n/g, "<br>")}</div>` : ""}
       ${(latestStable.assets || []).map((a) => assetRow(a, true)).join("")}
     </div>`;
 
@@ -611,6 +628,7 @@
         ${v.prerelease ? '<span class="badge badge-beta">Pre-release</span>' : '<span class="badge badge-stable">Stable</span>'}
         <span class="version-date" style="margin-left: auto;">${v.date}</span>
       </div>
+      ${v.notes ? `<div class="version-notes">${v.notes.replace(/\n/g, "<br>")}</div>` : ""}
       ${(v.assets || []).map((a) => assetRow(a, false)).join("")}
     </div>`,
                     )
