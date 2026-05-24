@@ -37,10 +37,9 @@ jobs:
       - name: Publish Lite (framework-dependent)
         run: >
           dotnet publish -c Release -r win-x64 --no-build
-          -p:PublishSingleFile=true
+          -p:PublishSingleFile=false
           -p:SelfContained=false
           -p:PublishReadyToRun=false
-          -p:EnableCompressionInSingleFile=false
           -o publish/lite
 
       - name: Rename artifacts
