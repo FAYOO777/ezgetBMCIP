@@ -151,50 +151,15 @@
                 font-weight: 400;
             }
             .compat-badge {
-                display: inline-flex;
-                align-items: center;
-                gap: 8px;
+                display: inline-block;
                 margin-top: 12px;
-                padding: 4px 10px;
+                padding: 4px 12px;
                 background: var(--tab-track);
-                border: 1px solid rgba(255, 255, 255, 0.05);
+                border: 1px solid var(--border);
                 border-radius: 20px;
-                backdrop-filter: blur(8px);
-            }
-            .compat-icons {
-                display: flex;
-                align-items: center;
-                gap: 4px;
-            }
-            .compat-icons svg {
-                width: 12px;
-                height: 12px;
-                color: var(--text-muted);
-                opacity: 0.8;
-                transition: color 0.3s ease;
-            }
-            .compat-badge:hover .compat-icons svg {
-                color: var(--text-main);
-                opacity: 1;
-            }
-            .compat-text {
                 font-size: 12px;
-                font-weight: 500;
                 color: var(--text-muted);
-                letter-spacing: -0.01em;
-            }
-            .arch-tag {
-                font-size: 10px;
-                font-family: monospace;
-                padding: 1px 4px;
-                background: rgba(0, 0, 0, 0.05);
-                border-radius: 4px;
-                margin-left: 2px;
-            }
-            @media (prefers-color-scheme: dark) {
-                .arch-tag {
-                    background: rgba(255, 255, 255, 0.08);
-                }
+                font-weight: 500;
             }
 
             /* --- Tabs --- */
@@ -539,31 +504,7 @@
                 </svg>
                 <h1>ezgetBMCIP</h1>
                 <p>BMC 管理口快速登录工具</p>
-                <span class="compat-badge">
-                    <div class="compat-icons">
-                        <svg
-                            class="win10-icon"
-                            viewBox="0 0 24 24"
-                            fill="currentColor"
-                        >
-                            <path
-                                d="M0 3.449L9.75 2.1v9.451H0V3.449zM0 12.549h9.75v9.351L0 20.551v-8zM10.85 1.95L24 0v11.55h-13.15V1.95zM24 12.549V24l-13.15-1.85v-9.6H24z"
-                            />
-                        </svg>
-                        <svg
-                            class="win11-icon"
-                            viewBox="0 0 24 24"
-                            fill="currentColor"
-                        >
-                            <path
-                                d="M0 0h11.4v11.4H0V0zm12.6 0H24v11.4H12.6V0zM0 12.6h11.4V24H0V12.6zm12.6 0H24V24H12.6V12.6z"
-                            />
-                        </svg>
-                    </div>
-                    <span class="compat-text"
-                        >Windows 10 / 11 <span class="arch-tag">x64</span></span
-                    >
-                </span>
+                <span class="compat-badge">Windows 10 / 11 &middot; x64</span>
             </header>
 
             <div class="tabs-wrapper">
