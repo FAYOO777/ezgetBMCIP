@@ -49,6 +49,17 @@
             <BooleanToVisibilityConverter x:Key="BoolToVis" />
             <local:InvertBoolConverter x:Key="InvertBoolConv" />
             <local:BoolToVisibilityInvertedConverter x:Key="BoolToVisInv" />
+            <local:AppPhaseToVisibilityConverter x:Key="PhaseToVis" />
+
+            <!-- ═══ Subnet octet TextBox style ═══ -->
+            <Style x:Key="SubnetOctetTextBoxStyle" TargetType="TextBox">
+                <Setter Property="Background" Value="{DynamicResource ControlFillColorDefaultBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Padding" Value="4,0" />
+                <Setter Property="CaretBrush" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+            </Style>
 
             <!-- ═══ Card style (uses WPF-UI theme brushes) ═══ -->
             <Style x:Key="CardBorderStyle" TargetType="Border">

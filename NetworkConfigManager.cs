@@ -8,8 +8,6 @@ namespace EzGetBmcIp;
 
 internal static class NetworkConfigManager
 {
-    private const string ToolIpAddress = "10.77.77.1";
-
     public static List<WiredAdapter> GetWiredAdapters()
     {
         var adapters = GetPhysicalEthernetAdaptersFromWmi();
@@ -60,18 +58,18 @@ internal static class NetworkConfigManager
         return config;
     }
 
-    public static Task ForceDhcpAsync(WiredAdapter adapter, CancellationToken cancellationToken)
+    public static Task ForceDhcpAsync(WiredAdapter adapter, SubnetConfig config, CancellationToken cancellationToken)
     {
-        return ForceDhcpBestEffortAsync(adapter, cancellationToken);
+        return ForceDhcpBestEffortAsync(adapter, config, cancellationToken);
     }
 
-    public static async Task ForceDhcpBestEffortAsync(WiredAdapter adapter, CancellationToken cancellationToken)
+    public static async Task ForceDhcpBestEffortAsync(WiredAdapter adapter, SubnetConfig config, CancellationToken cancellationToken)
     {
         var details = await RestoreDhcpAndCollectLogAsync(adapter, cancellationToken);
         for (var i = 0; i < 10; i++)
         {
             var dhcpEnabled = await IsDhcpEnabledAsync(adapter, cancellationToken);
-            var toolIpStillPresent = await HasToolStaticIpAsync(adapter, cancellationToken);
+            var toolIpStillPresent = await HasToolStaticIpAsync(adapter, config, cancellationToken);
             details += Environment.NewLine + $"verify {i + 1}: dhcpEnabled={dhcpEnabled}, toolIpStillPresent={toolIpStillPresent}";
 
             if (dhcpEnabled && !toolIpStillPresent)
@@ -85,50 +83,50 @@ internal static class NetworkConfigManager
         throw new InvalidOperationException("Failed to restore adapter to DHCP." + Environment.NewLine + details);
     }
 
-    public static async Task SetStaticForToolAsync(WiredAdapter adapter, CancellationToken cancellationToken)
+    public static async Task SetStaticForToolAsync(WiredAdapter adapter, SubnetConfig config, CancellationToken cancellationToken)
     {
         await RunNetshAsync(
-            $"interface ipv4 set address name=\"{adapter.Name}\" static {ToolIpAddress} 255.255.255.0",
+            $"interface ipv4 set address name=\"{adapter.Name}\" static {config.ServerIp} {config.Mask}",
             cancellationToken);
         await RunNetshAsync($"interface ipv4 set dnsservers name=\"{adapter.Name}\" static none", cancellationToken);
     }
 
-    public static async Task RestoreOriginalConfigAsync(WiredAdapter adapter, AdapterOriginalConfig config, CancellationToken cancellationToken)
+    public static async Task RestoreOriginalConfigAsync(WiredAdapter adapter, AdapterOriginalConfig origConfig, SubnetConfig subnetConfig, CancellationToken cancellationToken)
     {
-        if (config.DhcpEnabled || config.StaticAddresses.Count == 0)
+        if (origConfig.DhcpEnabled || origConfig.StaticAddresses.Count == 0)
         {
-            await ForceDhcpBestEffortAsync(adapter, cancellationToken);
+            await ForceDhcpBestEffortAsync(adapter, subnetConfig, cancellationToken);
             return;
         }
 
-        var primary = config.StaticAddresses[0];
-        var gatewayArg = config.Gateways.Count > 0 ? config.Gateways[0].ToString() : "none";
+        var primary = origConfig.StaticAddresses[0];
+        var gatewayArg = origConfig.Gateways.Count > 0 ? origConfig.Gateways[0].ToString() : "none";
         await RunNetshAsync(
             $"interface ipv4 set address name=\"{adapter.Name}\" static {primary.Address} {primary.Mask} {gatewayArg}",
             cancellationToken);
 
-        for (var i = 1; i < config.StaticAddresses.Count; i++)
+        for (var i = 1; i < origConfig.StaticAddresses.Count; i++)
         {
-            var item = config.StaticAddresses[i];
+            var item = origConfig.StaticAddresses[i];
             await RunNetshAsync(
                 $"interface ipv4 add address name=\"{adapter.Name}\" {item.Address} {item.Mask}",
                 cancellationToken);
         }
 
-        if (config.DnsServers.Count == 0)
+        if (origConfig.DnsServers.Count == 0)
         {
             await RunNetshAsync($"interface ipv4 set dnsservers name=\"{adapter.Name}\" source=dhcp", cancellationToken);
             return;
         }
 
         await RunNetshAsync(
-            $"interface ipv4 set dnsservers name=\"{adapter.Name}\" static {config.DnsServers[0]} primary",
+            $"interface ipv4 set dnsservers name=\"{adapter.Name}\" static {origConfig.DnsServers[0]} primary",
             cancellationToken);
 
-        for (var i = 1; i < config.DnsServers.Count; i++)
+        for (var i = 1; i < origConfig.DnsServers.Count; i++)
         {
             await RunNetshAsync(
-                $"interface ipv4 add dnsservers name=\"{adapter.Name}\" {config.DnsServers[i]} index={i + 1}",
+                $"interface ipv4 add dnsservers name=\"{adapter.Name}\" {origConfig.DnsServers[i]} index={i + 1}",
                 cancellationToken);
         }
     }
@@ -156,7 +154,7 @@ internal static class NetworkConfigManager
             || lines.Any(line => line.Equals("REG=1", StringComparison.OrdinalIgnoreCase));
     }
 
-    public static async Task<bool> HasToolStaticIpAsync(WiredAdapter adapter, CancellationToken cancellationToken)
+    public static async Task<bool> HasToolStaticIpAsync(WiredAdapter adapter, SubnetConfig config, CancellationToken cancellationToken)
     {
         var command = "$name='" + EscapePowerShellSingleQuoted(adapter.Name) + "'; " +
                       "$ips=Get-NetIPAddress -InterfaceAlias $name -AddressFamily IPv4 -ErrorAction SilentlyContinue; " +
@@ -164,7 +162,7 @@ internal static class NetworkConfigManager
         var result = await RunPowerShellAsync(command, cancellationToken, throwOnError: false);
 
         return result.Trim().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
-            .Any(line => line.Trim().Equals(ToolIpAddress, StringComparison.OrdinalIgnoreCase));
+            .Any(line => line.Trim().Equals(config.ServerIp, StringComparison.OrdinalIgnoreCase));
     }
 
     private static async Task<string> RestoreDhcpAndCollectLogAsync(WiredAdapter adapter, CancellationToken cancellationToken)

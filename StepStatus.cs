@@ -3,6 +3,13 @@ using System.Runtime.CompilerServices;
 
 namespace EzGetBmcIp;
 
+public enum AppPhase
+{
+    Preparation,
+    AdapterSelection,
+    FlowRunning
+}
+
 public enum StepState
 {
     Pending,

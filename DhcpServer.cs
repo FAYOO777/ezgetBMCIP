@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -6,9 +7,9 @@ namespace EzGetBmcIp;
 
 internal sealed class DhcpServer : IDisposable
 {
-    private static readonly IPAddress ServerIp = IPAddress.Parse("10.77.77.1");
-    private static readonly IPAddress Mask = IPAddress.Parse("255.255.255.0");
-    private static readonly IPAddress PoolStart = IPAddress.Parse("10.77.77.100");
+    private readonly IPAddress _serverIp;
+    private readonly IPAddress _mask;
+    private readonly IPAddress _poolStart;
     private const int DhcpServerPort = 67;
     private const int DhcpClientPort = 68;
 
@@ -16,7 +17,13 @@ internal sealed class DhcpServer : IDisposable
     private readonly object _sync = new();
     private UdpClient? _udp;
     private CancellationTokenSource? _cts;
-    private int _nextOffset;
+
+    public DhcpServer(SubnetConfig config)
+    {
+        _serverIp = IPAddress.Parse(config.ServerIp);
+        _mask = IPAddress.Parse(config.Mask);
+        _poolStart = IPAddress.Parse(config.PoolStart);
+    }
 
     public event EventHandler<DhcpLease>? LeaseAssigned;
 
@@ -84,16 +91,41 @@ internal sealed class DhcpServer : IDisposable
             return;
         }
 
-        var macLength = Math.Min(request[2], (byte)16);
-        var mac = request.Skip(28).Take(macLength).ToArray();
-        if (mac.Length == 0)
+        // Fix 1: Always take exactly 6 bytes for Ethernet MAC.
+        // Some BMC firmware fills hlen=16 in DHCPREQUEST (vs 6 in DHCPDISCOVER),
+        // which would produce a different lease key and create a duplicate lease.
+        var mac = request.Skip(28).Take(6).ToArray();
+        if (mac.Length == 0 || mac.All(b => b == 0))
         {
             return;
         }
 
         var lease = GetOrCreateLease(mac);
+
+        // Fix 2: For DHCPREQUEST, validate against Option 50 (Requested IP Address).
+        // If the MAC lookup created/mapped to a different IP than what the client
+        // requested, remap to the lease that owns the requested IP.
+        if (messageType == 3)
+        {
+            var opt50 = GetOption(request, 50);
+            if (opt50 is { Length: 4 })
+            {
+                var requestedIp = new IPAddress(opt50);
+                lock (_sync)
+                {
+                    var requestedLease = _leases.Values.FirstOrDefault(l => l.IpAddress.Equals(requestedIp));
+                    if (requestedLease != null && requestedLease != lease)
+                    {
+                        var key = Convert.ToHexString(mac);
+                        _leases[key] = requestedLease;
+                        lease = requestedLease;
+                    }
+                }
+            }
+        }
+
         var responseType = messageType == 1 ? (byte)2 : (byte)5;
-        var response = BuildResponse(request, mac, lease.IpAddress, responseType);
+        var response = BuildResponse(request, mac, lease.IpAddress, responseType, _serverIp);
         var destination = new IPEndPoint(IPAddress.Broadcast, DhcpClientPort);
         if (_udp is not null)
         {
@@ -116,11 +148,13 @@ internal sealed class DhcpServer : IDisposable
                 return existing;
             }
 
-            var ipBytes = PoolStart.GetAddressBytes();
-            ipBytes[3] = (byte)(100 + (_nextOffset++ % 101));
+            // Fixed .100 for the single BMC device (1:1 direct-connect scenario)
+            if (_leases.Count > 0)
+                Debug.WriteLine($"DHCP: second MAC {Convert.ToHexString(mac)} ignored, reusing fixed IP.");
+
             var lease = new DhcpLease
             {
-                IpAddress = new IPAddress(ipBytes),
+                IpAddress = _poolStart,
                 MacAddress = mac
             };
             _leases[key] = lease;
@@ -128,7 +162,7 @@ internal sealed class DhcpServer : IDisposable
         }
     }
 
-    private static byte[] BuildResponse(byte[] request, byte[] mac, IPAddress clientIp, byte messageType)
+    private static byte[] BuildResponse(byte[] request, byte[] mac, IPAddress clientIp, byte messageType, IPAddress serverIp)
     {
         var response = new byte[300];
         response[0] = 2;
@@ -137,7 +171,7 @@ internal sealed class DhcpServer : IDisposable
         response[3] = request[3];
         Array.Copy(request, 4, response, 4, 4);
         Array.Copy(clientIp.GetAddressBytes(), 0, response, 16, 4);
-        Array.Copy(ServerIp.GetAddressBytes(), 0, response, 20, 4);
+        Array.Copy(serverIp.GetAddressBytes(), 0, response, 20, 4);
         Array.Copy(request, 28, response, 28, 16);
 
         response[236] = 99;
@@ -147,11 +181,11 @@ internal sealed class DhcpServer : IDisposable
 
         using var options = new MemoryStream();
         WriteOption(options, 53, new[] { messageType });
-        WriteOption(options, 54, ServerIp.GetAddressBytes());
+        WriteOption(options, 54, serverIp.GetAddressBytes());
         WriteOption(options, 51, UInt32Bytes(3600));
-        WriteOption(options, 1, Mask.GetAddressBytes());
-        WriteOption(options, 3, ServerIp.GetAddressBytes());
-        WriteOption(options, 6, ServerIp.GetAddressBytes());
+        WriteOption(options, 1, IPAddress.Parse("255.255.255.0").GetAddressBytes());
+        WriteOption(options, 3, serverIp.GetAddressBytes());
+        WriteOption(options, 6, serverIp.GetAddressBytes());
         WriteOption(options, 58, UInt32Bytes(1800));
         WriteOption(options, 59, UInt32Bytes(3150));
         options.WriteByte(255);

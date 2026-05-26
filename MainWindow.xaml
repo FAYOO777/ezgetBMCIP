@@ -4,7 +4,7 @@
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         xmlns:local="clr-namespace:EzGetBmcIp"
         Title="ezgetBMCIP"
-        Width="840" Height="750" MinWidth="760" MinHeight="660"
+        Width="840" Height="780" MinWidth="760" MinHeight="660"
         WindowStartupLocation="CenterScreen"
         ExtendsContentIntoTitleBar="True"
         WindowBackdropType="Mica">
@@ -18,7 +18,7 @@
 
         <!-- ═══════════════ Title Bar ═══════════════ -->
         <ui:TitleBar Grid.Row="0"
-                     Title="ezgetBMCIP — 获取BMC的IP，应该可以变得更简单">
+                     Title="ezgetBMCIP">
             <ui:TitleBar.Icon>
                 <ui:ImageIcon Source="{StaticResource AppIconDrawing}" />
             </ui:TitleBar.Icon>
@@ -28,8 +28,55 @@
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="32,24,32,24">
 
-                <!-- ── Hero card ── -->
-                <Border Style="{StaticResource CardBorderStyle}" Padding="24,18">
+                <!-- ── Preparation card ── -->
+                <Grid MinHeight="560"
+                      Visibility="{Binding AppPhase, Converter={StaticResource PhaseToVis}, ConverterParameter=Preparation}">
+                    <Border Style="{StaticResource CardBorderStyle}" Padding="28,24"
+                            MaxWidth="520" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <StackPanel>
+                        <TextBlock Text="{Binding StatusText}" FontSize="20"
+                                   FontWeight="Bold"
+                                   Foreground="{DynamicResource AccentFillColorDefaultBrush}"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,0,0,4" />
+                        <TextBlock Text="{Binding DetailText}" FontSize="13"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,0,0,20" />
+
+                        <TextBlock Text="🔌 准备工作" FontSize="14" FontWeight="Bold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   Margin="0,0,0,4" />
+                        <TextBlock Text="请确保服务器管理口和笔记本已通过网线直连。"
+                                   FontSize="13"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Margin="0,0,0,16" TextWrapping="Wrap" />
+
+                        <TextBlock Text="⚠ 注意事项" FontSize="14" FontWeight="Bold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   Margin="0,0,0,4" />
+                        <TextBlock FontSize="13" Margin="0,0,0,6" TextWrapping="Wrap">
+                            <Run Text="此工具仅限直连使用，" />
+                            <Run Text="无法在局域网内使用" FontWeight="Bold" />
+                            <Run Text="。" />
+                        </TextBlock>
+                        <TextBlock FontSize="13" Margin="0,0,0,20" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                            工具会临时修改选择的网卡 IP 配置，退出时自动还原为 DHCP。
+                        </TextBlock>
+
+                        <ui:Button Content="下一步 →"
+                                   Command="{Binding GoNextCommand}"
+                                   Appearance="Primary"
+                                   HorizontalAlignment="Center"
+                                   Width="140" Height="40" />
+                    </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- ── Hero card (AdapterSelection + FlowRunning) ── -->
+                <Border Style="{StaticResource CardBorderStyle}" Padding="24,18"
+                        Visibility="{Binding IsAdapterVisible, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
                         <TextBlock Text="{Binding StatusText}" FontSize="24"
                                    FontWeight="Bold"
@@ -41,7 +88,8 @@
                 </Border>
 
                 <!-- ── Adapter selector card ── -->
-                <Border Style="{StaticResource CardBorderStyle}" Padding="18,16">
+                <Border Style="{StaticResource CardBorderStyle}" Padding="18,16"
+                        Visibility="{Binding IsAdapterVisible, Converter={StaticResource BoolToVis}}">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -65,7 +113,7 @@
                                    VerticalAlignment="Center" FontSize="14"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                    Margin="0,0,14,0"
-                                   Visibility="{Binding IsFlowStarted, Converter={StaticResource BoolToVisInv}}" />
+                                   Visibility="{Binding AppPhase, Converter={StaticResource PhaseToVis}, ConverterParameter=AdapterSelection}" />
 
                         <ComboBox Grid.Row="1" Grid.Column="1"
                                   ItemsSource="{Binding Adapters}"
@@ -73,7 +121,7 @@
                                   DisplayMemberPath="DisplayName"
                                   IsEnabled="{Binding AdapterSelectionEnabled}"
                                   Height="38" VerticalAlignment="Center"
-                                  Visibility="{Binding IsFlowStarted, Converter={StaticResource BoolToVisInv}}" />
+                                  Visibility="{Binding AppPhase, Converter={StaticResource PhaseToVis}, ConverterParameter=AdapterSelection}" />
 
                         <ui:Button Grid.Row="1" Grid.Column="2"
                                 Content="开始"
@@ -82,18 +130,11 @@
                                 IsEnabled="{Binding StartButtonEnabled}"
                                 Width="96" Height="38" Margin="14,0,0,0"
                                 VerticalAlignment="Center"
-                                Visibility="{Binding IsFlowStarted, Converter={StaticResource BoolToVisInv}}" />
-
-                        <TextBlock Grid.Row="2" Grid.ColumnSpan="3"
-                                   Text="请选择你准备用网线连接服务器的那块网卡"
-                                   FontSize="12"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   Margin="0,10,0,0"
-                                   Visibility="{Binding IsFlowStarted, Converter={StaticResource BoolToVisInv}}" />
+                                Visibility="{Binding AppPhase, Converter={StaticResource PhaseToVis}, ConverterParameter=AdapterSelection}" />
 
                         <!-- ── Running state: after flow starts ── -->
                         <StackPanel Grid.Row="1" Grid.ColumnSpan="3"
-                                    Visibility="{Binding IsFlowStarted, Converter={StaticResource BoolToVis}}"
+                                    Visibility="{Binding AppPhase, Converter={StaticResource PhaseToVis}, ConverterParameter=FlowRunning}"
                                     Orientation="Horizontal" Margin="0,4,0,0">
                             <Ellipse Width="10" Height="10"
                                      Fill="{DynamicResource SystemFillColorSuccessBrush}"
@@ -106,8 +147,75 @@
                     </Grid>
                 </Border>
 
+                <!-- ── Subnet config card ── -->
+                <Border Style="{StaticResource CardBorderStyle}" Padding="18,14"
+                        Visibility="{Binding AppPhase, Converter={StaticResource PhaseToVis}, ConverterParameter=AdapterSelection}">
+                    <StackPanel>
+                        <TextBlock Text="⚙ 自定义网段（可选）" FontSize="14" FontWeight="Bold"
+                                   Foreground="{DynamicResource AccentFillColorDefaultBrush}"
+                                   Margin="0,0,0,10" />
+
+                        <!-- 4 octet input boxes -->
+                        <Grid HorizontalAlignment="Center">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="56" />
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="56" />
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="56" />
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="56" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBox Grid.Column="0" Text="{Binding SubnetConfig.Octet1Text, UpdateSourceTrigger=LostFocus}"
+                                     MaxLength="3" TextAlignment="Center"
+                                     FontSize="18" FontWeight="SemiBold"
+                                     Height="40" VerticalContentAlignment="Center"
+                                     Style="{StaticResource SubnetOctetTextBoxStyle}"
+                                     PreviewTextInput="OctetTextBox_PreviewTextInput" />
+                            <TextBlock Grid.Column="1" Text="." FontSize="20" FontWeight="Bold"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="2" Text="{Binding SubnetConfig.Octet2Text, UpdateSourceTrigger=LostFocus}"
+                                     MaxLength="3" TextAlignment="Center"
+                                     FontSize="18" FontWeight="SemiBold"
+                                     Height="40" VerticalContentAlignment="Center"
+                                     Style="{StaticResource SubnetOctetTextBoxStyle}"
+                                     PreviewTextInput="OctetTextBox_PreviewTextInput" />
+                            <TextBlock Grid.Column="3" Text="." FontSize="20" FontWeight="Bold"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="4" Text="{Binding SubnetConfig.Octet3Text, UpdateSourceTrigger=LostFocus}"
+                                     MaxLength="3" TextAlignment="Center"
+                                     FontSize="18" FontWeight="SemiBold"
+                                     Height="40" VerticalContentAlignment="Center"
+                                     Style="{StaticResource SubnetOctetTextBoxStyle}"
+                                     PreviewTextInput="OctetTextBox_PreviewTextInput" />
+                            <TextBlock Grid.Column="5" Text="." FontSize="20" FontWeight="Bold"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="6" Text="{Binding SubnetConfig.Octet4Text, UpdateSourceTrigger=LostFocus}"
+                                     MaxLength="3" TextAlignment="Center"
+                                     FontSize="18" FontWeight="SemiBold"
+                                     Height="40" VerticalContentAlignment="Center"
+                                     Style="{StaticResource SubnetOctetTextBoxStyle}"
+                                     PreviewTextInput="OctetTextBox_PreviewTextInput" />
+                        </Grid>
+
+                        <!-- Info -->
+                        <TextBlock HorizontalAlignment="Center" Margin="0,8,0,0" FontSize="11"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                            <Run Text="子网掩码: 255.255.255.0"/>
+                            <Run Text="  ·  "/>
+                            <Run Text="BMC 固定地址: "/>
+                            <Run Text="{Binding SubnetConfig.PoolDisplay, Mode=OneWay}"/>
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
+
                 <!-- ── Current step card ── -->
-                <Border Style="{StaticResource CardBorderStyle}" Padding="32,24">
+                <Border Style="{StaticResource CardBorderStyle}" Padding="32,24"
+                        Visibility="{Binding AppPhase, Converter={StaticResource PhaseToVis}, ConverterParameter=FlowRunning}">
                     <ContentControl Content="{Binding}">
                         <ContentControl.ContentTemplate>
                             <DataTemplate>
@@ -211,8 +319,39 @@
                     </ContentControl>
                 </Border>
 
+                <!-- ── IP result card ── -->
+                <Border Style="{StaticResource CardBorderStyle}" Padding="28,20"
+                        Visibility="{Binding IsIpCardVisible, Converter={StaticResource BoolToVis}}">
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="🎯 已获取 BMC 地址" FontSize="14" FontWeight="Bold"
+                                   Foreground="{DynamicResource SystemFillColorSuccessBrush}"
+                                   HorizontalAlignment="Center" Margin="0,0,0,12" />
+
+                        <!-- Large IP -->
+                        <TextBlock Text="{Binding DiscoveredIp}"
+                                   FontSize="32" FontWeight="Bold"
+                                   Foreground="{DynamicResource AccentFillColorDefaultBrush}"
+                                   HorizontalAlignment="Center"
+                                   FontFamily="Consolas, Courier New"
+                                   Margin="0,0,0,8" />
+
+                        <!-- Copy + Open buttons -->
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                            <ui:Button Content="{Binding CopyButtonText}"
+                                       Command="{Binding CopyIpCommand}"
+                                       Appearance="Secondary"
+                                       Width="100" Height="36" Margin="0,0,10,0" />
+                            <ui:Button Content="打开 BMC →"
+                                       Appearance="Success"
+                                       Width="110" Height="36"
+                                       Click="OpenBmcButton_Click" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
                 <!-- ── Step indicator ── -->
-                <Border Style="{StaticResource CardBorderStyle}" Padding="32,16">
+                <Border Style="{StaticResource CardBorderStyle}" Padding="32,16"
+                        Visibility="{Binding AppPhase, Converter={StaticResource PhaseToVis}, ConverterParameter=FlowRunning}">
                     <ItemsControl ItemsSource="{Binding Steps}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -367,7 +506,7 @@
                 </StackPanel>
                 <ui:Button Content="完成 / 退出"
                         Command="{Binding ExitCommand}"
-                        Appearance="Success"
+                        Appearance="Secondary"
                         HorizontalAlignment="Right" VerticalAlignment="Center"
                         Width="130" Height="40" />
             </Grid>

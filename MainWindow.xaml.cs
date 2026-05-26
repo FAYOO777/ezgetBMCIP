@@ -65,4 +65,16 @@ public partial class MainWindow : FluentWindow
             UseShellExecute = true
         });
     }
+
+    private void OctetTextBox_PreviewTextInput(object sender, System.Windows.Input.TextCompositionEventArgs e)
+    {
+        // Only allow digits
+        e.Handled = !int.TryParse(e.Text, out _);
+    }
+
+    private void OpenBmcButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!string.IsNullOrEmpty(_vm.DiscoveredIp))
+            OnOpenBrowser(_vm.DiscoveredIp);
+    }
 }

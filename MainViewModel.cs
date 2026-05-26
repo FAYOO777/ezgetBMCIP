@@ -12,12 +12,25 @@ namespace EzGetBmcIp;
 
 public sealed class MainViewModel : INotifyPropertyChanged
 {
-    private readonly DhcpServer _dhcpServer = new();
+    private readonly SubnetConfig _subnetConfig = new();
+    private DhcpServer? _dhcpServer;
     private CancellationTokenSource? _flowCts;
     private WiredAdapter? _selectedAdapter;
     private AdapterOriginalConfig? _originalConfig;
     private DispatcherTimer? _ellipsisTimer;
     private int _ellipsisDots;
+
+    private AppPhase _appPhase = AppPhase.Preparation;
+
+    public AppPhase AppPhase
+    {
+        get => _appPhase;
+        set { _appPhase = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsAdapterVisible)); OnPropertyChanged(nameof(IsIpCardVisible)); }
+    }
+
+    public bool IsAdapterVisible => _appPhase != AppPhase.Preparation;
+
+    public SubnetConfig SubnetConfig => _subnetConfig;
 
     // ════════════════════════════════════════════════════════════════
     //  Steps
@@ -25,11 +38,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public ObservableCollection<StepItem> Steps { get; } = new()
     {
-        new StepItem("1. 配置本机网卡", "配置网卡", "准备设置 10.77.77.1 并启动内嵌 DHCP Server"),
-        new StepItem("2. 连接 IPMI 管理口", "连接网线", "请用网线连接服务器的 IPMI 管理口"),
-        new StepItem("3. 自动获取 IPMI 地址", "获取 IP", "等待 IPMI 发出 DHCP 请求"),
-        new StepItem("4. 打开 BMC 页面", "打开页面", "自动调用默认浏览器打开管理页面"),
-        new StepItem("5. 完成后退出", "清理退出", "退出前自动还原网卡配置")
+        new StepItem("1. 配置本机网卡", "配置网卡", "设置静态 IP 并启动 DHCP 服务"),
+        new StepItem("2. 连接 IPMI 管理口", "连接网线", "等待检测到网线连接"),
+        new StepItem("3. 自动获取 IPMI 地址", "获取 IP", "等待 IPMI 通过 DHCP 获取地址"),
+        new StepItem("4. 打开 BMC 页面", "打开页面", "调用浏览器打开管理页面"),
+        new StepItem("5. 完成后退出", "清理退出", "关闭 DHCP 服务并还原网卡配置")
     };
 
     private void RefreshStepFlags()
@@ -70,7 +83,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     //  UI bindings
     // ════════════════════════════════════════════════════════════════
 
-    private string _statusText = "获取BMC的IP，应该可以变得更简单";
+    private string _statusText = "欢迎使用 ezgetBMCIP";
 
     public string StatusText
     {
@@ -78,13 +91,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set { _statusText = value; OnPropertyChanged(); }
     }
 
-    private string _detailText = "全程自动配置，用户只需插入网线";
+    private string _detailText = "直连服务器，自动分配 BMC 管理口 IP。";
 
     public string DetailText
     {
         get => _detailText;
         set { _detailText = value; OnPropertyChanged(); }
     }
+
+    private string? _initError;
 
     private string _activityText = "";
 
@@ -142,6 +157,30 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set { _isCleanupDone = value; OnPropertyChanged(); }
     }
 
+    private string? _discoveredIp;
+
+    public string? DiscoveredIp
+    {
+        get => _discoveredIp;
+        set { _discoveredIp = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsIpDiscovered)); OnPropertyChanged(nameof(DiscoveredIpUrl)); }
+    }
+
+    public bool IsIpDiscovered => !string.IsNullOrEmpty(_discoveredIp);
+
+    public bool IsIpCardVisible => IsIpDiscovered && _appPhase == AppPhase.FlowRunning;
+
+    public string DiscoveredIpUrl => "http://" + _discoveredIp;
+
+    private string _copyButtonText = "复制 IP";
+
+    public string CopyButtonText
+    {
+        get => _copyButtonText;
+        set { _copyButtonText = value; OnPropertyChanged(); }
+    }
+
+    private DispatcherTimer? _copyFeedbackTimer;
+
     public string VersionText => GetVersionText();
     public string GitHubUrl => "https://github.com/FAYOO777/ezgetBMCIP";
 
@@ -175,6 +214,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public ICommand StartCommand { get; }
     public ICommand ExitCommand { get; }
+    public ICommand CopyIpCommand { get; }
+    public ICommand GoNextCommand { get; }
 
     // ════════════════════════════════════════════════════════════════
     //  Events (for window interaction)
@@ -188,6 +229,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         RefreshStepFlags();
         StartCommand = new RelayCommand(async _ => await StartFlowAsync(), _ => StartButtonEnabled);
         ExitCommand = new RelayCommand(_ => RequestClose?.Invoke());
+        CopyIpCommand = new RelayCommand(_ => CopyIp());
+        GoNextCommand = new RelayCommand(_ => GoNext());
         _ = InitializeAsync();
     }
 
@@ -195,9 +238,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         try
         {
-            StatusText = "正在检测网卡...";
-            DetailText = "请选择要连接 IPMI 管理口的目标网卡。";
-
             var adapters = await Task.Run(NetworkConfigManager.GetWiredAdapters);
             if (adapters.Count == 0)
                 throw new InvalidOperationException("未检测到可用网卡，请确认网卡驱动已安装。");
@@ -205,17 +245,27 @@ public sealed class MainViewModel : INotifyPropertyChanged
             foreach (var a in adapters)
                 Adapters.Add(a);
             SelectedAdapterItem = Adapters[0];
-
-            StatusText = "请选择目标网卡";
-            DetailText = "请选择你准备用网线连接服务器的那块网卡。";
         }
         catch (Exception ex)
         {
+            _initError = ex.Message;
+        }
+    }
+
+    private void GoNext()
+    {
+        if (_initError is not null)
+        {
             StatusText = "❌ 操作失败";
-            DetailText = ex.Message;
+            DetailText = _initError;
             BadgeState = StepState.Failed;
             BadgeText = "! 失败";
+            return;
         }
+
+        AppPhase = AppPhase.AdapterSelection;
+        StatusText = "请选择目标网卡";
+        DetailText = "选择要连接服务器 IPMI 管理口的网卡，然后点击「开始」。";
     }
 
     private async Task StartFlowAsync()
@@ -226,7 +276,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _selectedAdapter = SelectedAdapterItem;
         AdapterSelectionEnabled = false;
         StartButtonEnabled = false;
-        IsFlowStarted = true;
+        AppPhase = AppPhase.FlowRunning;
+        DiscoveredIp = null;
+        CopyButtonText = "复制 IP";
         AdapterCardLine1 = "✓ " + _selectedAdapter.DisplayName;
         AdapterCardLine2 = "";
         _flowCts = new CancellationTokenSource();
@@ -236,6 +288,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             await ConfigureLocalAdapterAsync(_flowCts.Token);
             await WaitForLinkAsync(_flowCts.Token);
             var lease = await WaitForDhcpLeaseAsync(_flowCts.Token);
+            DiscoveredIp = lease.IpAddress.ToString();
             SetStep(3, StepState.Active, "正在打开默认浏览器访问 BMC 管理页面。");
             SetBusy("正在打开 BMC 管理页面...", "BMC 地址：http://" + lease.IpAddress);
             OpenBrowser(lease.IpAddress.ToString());
@@ -260,6 +313,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             MarkCurrentFailure(ex.Message);
             StatusText = "❌ 操作失败";
             DetailText = ex.Message;
+            AppPhase = AppPhase.AdapterSelection;
             AdapterSelectionEnabled = true;
             StartButtonEnabled = true;
             BadgeState = StepState.Failed;
@@ -271,7 +325,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private async Task ConfigureLocalAdapterAsync(CancellationToken ct)
     {
         SetStep(0, StepState.Active, "正在记录原始配置：" + _selectedAdapter!.Name);
-        SetBusy("正在配置本机网卡...", "先记录原始配置，再将网卡切换到 10.77.77.1。");
+        SetBusy("正在配置本机网卡...", "先记录原始配置，再将网卡切换到 " + _subnetConfig.ServerDisplay + "。");
         StartEllipsis();
 
         _originalConfig = NetworkConfigManager.CaptureOriginalConfig(_selectedAdapter);
@@ -279,22 +333,26 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (!_originalConfig.DhcpEnabled)
         {
             SetStep(0, StepState.Active, "检测到当前是静态 IP，先还原为 DHCP 以清理残留配置。");
-            await NetworkConfigManager.ForceDhcpBestEffortAsync(_selectedAdapter, ct);
+            await NetworkConfigManager.ForceDhcpBestEffortAsync(_selectedAdapter, _subnetConfig, ct);
             await Task.Delay(1200, ct);
             _originalConfig = AdapterOriginalConfig.CreateDhcp();
         }
 
-        await NetworkConfigManager.SetStaticForToolAsync(_selectedAdapter, ct);
+        await NetworkConfigManager.SetStaticForToolAsync(_selectedAdapter, _subnetConfig, ct);
+        _dhcpServer = new DhcpServer(_subnetConfig);
         _dhcpServer.Start();
-        await CompleteStepAsync(0, "✅ 本机网卡配置完成：10.77.77.1 / 255.255.255.0", ct);
+        await CompleteStepAsync(0, "✅ 本机网卡配置完成：" + _subnetConfig.ServerDisplay, ct);
         StopEllipsis();
     }
 
     private async Task WaitForLinkAsync(CancellationToken ct)
     {
         SetStep(1, StepState.Active, "请用网线连接服务器的 IPMI 管理口，正在等待 Link UP。");
-        SetBusy("请插入网线", "等待网卡链路变为 Link UP，界面会持续自动刷新。");
+        SetBusy("请插入网线", "等待检测到网线连接，预计几秒内完成。");
         StartEllipsis();
+
+        var warned = false;
+        var startTime = DateTime.UtcNow;
 
         while (!ct.IsCancellationRequested)
         {
@@ -303,6 +361,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 await CompleteStepAsync(1, "✅ 网线已连接，链路已 UP", ct);
                 StopEllipsis();
                 return;
+            }
+
+            if (!warned && (DateTime.UtcNow - startTime).TotalSeconds > 60)
+            {
+                DetailText = "⚠ 已等待 60 秒仍未检测到网线连接，请确认网线已直连服务器 IPMI 管理口。";
+                warned = true;
             }
 
             await Task.Delay(1500, ct);
@@ -318,7 +382,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var tcs = new TaskCompletionSource<DhcpLease>(TaskCreationOptions.RunContinuationsAsynchronously);
         void Handler(object? sender, DhcpLease lease) => tcs.TrySetResult(lease);
 
-        _dhcpServer.LeaseAssigned += Handler;
+        if (_dhcpServer is not null)
+            _dhcpServer.LeaseAssigned += Handler;
         try
         {
             using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
@@ -336,7 +401,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         finally
         {
-            _dhcpServer.LeaseAssigned -= Handler;
+            if (_dhcpServer is not null)
+                _dhcpServer.LeaseAssigned -= Handler;
         }
     }
 
@@ -364,12 +430,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
             BadgeText = "处理中";
             StartEllipsis();
 
-            _dhcpServer.Stop();
+            _dhcpServer?.Stop();
+            _dhcpServer?.Dispose();
+            _dhcpServer = null;
 
             if (_selectedAdapter is not null)
             {
                 using var cleanupCts = new CancellationTokenSource(TimeSpan.FromSeconds(70));
-                await NetworkConfigManager.ForceDhcpBestEffortAsync(_selectedAdapter, cleanupCts.Token);
+                await NetworkConfigManager.ForceDhcpBestEffortAsync(_selectedAdapter, _subnetConfig, cleanupCts.Token);
             }
 
             SetStep(4, StepState.Done, "✅ 网卡配置已还原，DHCP Server 已关闭");
@@ -395,6 +463,29 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
             catch { }
         }
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  Copy IP
+    // ════════════════════════════════════════════════════════════════
+
+    private void CopyIp()
+    {
+        if (string.IsNullOrEmpty(_discoveredIp))
+            return;
+
+        Clipboard.SetText(_discoveredIp);
+        CopyButtonText = "已复制 ✓";
+
+        _copyFeedbackTimer?.Stop();
+        _copyFeedbackTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _copyFeedbackTimer.Tick += (_, _) =>
+        {
+            CopyButtonText = "复制 IP";
+            _copyFeedbackTimer?.Stop();
+            _copyFeedbackTimer = null;
+        };
+        _copyFeedbackTimer.Start();
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -431,7 +522,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _flowCts?.Cancel();
     }
 
-    private static string GetActivityText(int index, StepState state)
+    private string GetActivityText(int index, StepState state)
     {
         if (state == StepState.Done)
         {
@@ -461,7 +552,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         return index switch
         {
-            0 => "正在将网卡设置为静态 IP 10.77.77.1，请稍候...",
+            0 => "正在将网卡设置为静态 IP " + _subnetConfig.ServerDisplay + "，请稍候...",
             1 => "正在等待你插入连接 IPMI 管理口的网线...",
             2 => "正在等待 IPMI 设备通过 DHCP 获取地址...",
             3 => "正在打开默认浏览器访问 BMC 管理页面...",
