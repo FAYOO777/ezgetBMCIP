@@ -4,4 +4,5 @@ publish/
 *.user
 *.suo
 .vs/
+.opencode/
 versions.json
