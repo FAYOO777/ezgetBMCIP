@@ -1,5 +1,8 @@
 ## ezgetBMCIP 更新日志
 
+### v1.3.2 (2026-06-23)
+- Legacy 压缩包新增 `使用教程.txt`，提示旧系统用户先安装包内 `.NET Framework 4.6` 离线安装包，再运行 Legacy 程序。
+
 ### v1.3.1 (2026-06-23)
 - Legacy 发布压缩包内置 `.NET Framework 4.6` 离线安装包，减少 Windows 7/8/8.1 用户额外下载步骤。
 

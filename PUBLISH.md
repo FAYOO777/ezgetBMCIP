@@ -18,6 +18,8 @@ publish\
 │   ├── ezgetBMCIP-legacy.exe.config
 │   ├── ezgetBMCIP.Core.Legacy.dll
 │   ├── System.ValueTuple.dll
+│   ├── NDP46-KB3045557-x86-x64-AllOS-ENU.exe
+│   ├── 使用教程.txt
 │   └── README.txt
 ├── ezgetBMCIP-legacy-net46.zip  # Legacy 版发布压缩包
 ├── 2026-5-29-14-30\             # Lite 版历史发布
@@ -57,6 +59,7 @@ publish\
 
 - 目标机器必须安装 **.NET Framework 4.6**（或更高 4.x）
 - Legacy 压缩包内置 `NDP46-KB3045557-x86-x64-AllOS-ENU.exe`，离线环境可先运行该安装包
+- Legacy 压缩包内置 `使用教程.txt`，提示用户先安装 .NET Framework 4.6，再运行 `ezgetBMCIP-legacy.exe`
 - 支持操作系统：Windows 7 SP1 / Windows 8 / Windows 8.1 / Windows 10 / Windows 11
 - Legacy 版不是 self-contained / single-file 发布，部署前请先确认目标机器已安装 .NET Framework
 - .NET Framework 4.6 下载：<https://dotnet.microsoft.com/en-us/download/dotnet-framework/net46>
