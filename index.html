@@ -115,7 +115,7 @@
             }
 
             .container {
-                max-width: 760px;
+                max-width: 920px;
                 margin: 0 auto;
                 padding: 60px 24px 80px;
             }
@@ -174,6 +174,8 @@
             }
             .tabs {
                 display: inline-flex;
+                flex-wrap: wrap;
+                justify-content: center;
                 background: var(--tab-track);
                 padding: 4px;
                 border-radius: 12px;
@@ -312,6 +314,79 @@
             }
             .intro-card ul li {
                 margin-bottom: 2px;
+            }
+
+            .tutorial-card {
+                background: var(--card-bg);
+                border-radius: var(--radius-lg);
+                padding: 32px;
+                border: 1px solid var(--border);
+                box-shadow: var(--shadow-lg);
+            }
+            .tutorial-lead {
+                color: var(--text-muted);
+                font-size: 14px;
+                margin: 0 0 24px;
+                max-width: 720px;
+            }
+            .tutorial-note {
+                border: 1px solid var(--border);
+                border-left: 4px solid var(--accent);
+                border-radius: var(--radius-md);
+                padding: 14px 16px;
+                margin-bottom: 28px;
+                color: var(--text-muted);
+                font-size: 13px;
+                background: var(--tab-track);
+            }
+            .tutorial-step {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr);
+                gap: 14px;
+                padding: 28px 0;
+                border-top: 1px solid var(--border);
+            }
+            .tutorial-step:first-of-type {
+                border-top: 0;
+                padding-top: 0;
+            }
+            .step-kicker {
+                color: var(--accent);
+                font-size: 12px;
+                font-weight: 700;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                margin-bottom: 4px;
+            }
+            .tutorial-step h3 {
+                font-size: 20px;
+                line-height: 1.35;
+                margin: 0 0 8px;
+            }
+            .tutorial-step p {
+                color: var(--text-muted);
+                font-size: 14px;
+                margin: 0 0 8px;
+            }
+            .tutorial-step ul {
+                color: var(--text-muted);
+                font-size: 13px;
+                line-height: 1.8;
+                padding-left: 20px;
+                margin: 0;
+            }
+            .tutorial-shot {
+                display: block;
+                width: 100%;
+                border-radius: 14px;
+                border: 1px solid var(--border);
+                box-shadow: var(--shadow-md);
+                background: #111827;
+            }
+            .tutorial-warning {
+                color: var(--warn);
+                font-size: 13px;
+                margin-top: 8px;
             }
 
             .hero-tag {
@@ -503,6 +578,24 @@
             footer a:hover {
                 color: var(--accent);
             }
+
+            @media (max-width: 640px) {
+                .container {
+                    padding: 36px 16px 56px;
+                }
+                .tab-btn {
+                    padding: 8px 14px;
+                }
+                .hero-card,
+                .version-card,
+                .intro-card,
+                .tutorial-card {
+                    padding: 22px;
+                }
+                .tutorial-step {
+                    padding: 22px 0;
+                }
+            }
         </style>
     </head>
     <body>
@@ -563,6 +656,9 @@
                     <button class="tab-btn" onclick="switchTab('history')">
                         历史版本
                     </button>
+                    <button class="tab-btn" onclick="switchTab('tutorial')">
+                        使用教程
+                    </button>
                 </div>
             </div>
 
@@ -570,6 +666,102 @@
 
             <div id="latest-panel" class="tab-panel active"></div>
             <div id="history-panel" class="tab-panel"></div>
+            <div id="tutorial-panel" class="tab-panel">
+                <div class="tutorial-card">
+                    <h2>Baby Step 使用教程</h2>
+                    <p class="tutorial-lead">
+                        适用场景：笔记本用网线直连服务器的 IPMI/BMC 管理口。工具会临时接管你选择的网卡，给 BMC 分配一个地址，并打开管理页面。
+                    </p>
+                    <div class="tutorial-note">
+                        开始前确认两件事：软件需要管理员权限；网线要插到服务器的 IPMI/BMC 专用管理口，不要插到普通业务网口。退出时工具会把所选网卡恢复为 DHCP。
+                    </div>
+
+                    <section class="tutorial-step">
+                        <div>
+                            <div class="step-kicker">Step 0</div>
+                            <h3>先看说明，不要接入局域网使用</h3>
+                            <p>
+                                ezgetBMCIP 只用于直连。它会修改你选择的网卡 IP 配置，并在退出时恢复为 DHCP。
+                            </p>
+                            <ul>
+                                <li>如果这块网卡正在上网，运行期间网络会被临时切走。</li>
+                                <li>如果机器有多个有线网卡，后面要选连接 IPMI/BMC 的那一块。</li>
+                            </ul>
+                        </div>
+                        <img class="tutorial-shot" src="assets/tutorial/step-0-welcome.png" alt="欢迎页和使用注意事项" loading="lazy" />
+                    </section>
+
+                    <section class="tutorial-step">
+                        <div>
+                            <div class="step-kicker">Step 1</div>
+                            <h3>选择目标网卡</h3>
+                            <p>
+                                选择将要连接 IPMI/BMC 管理口的有线网卡。默认网段是 <code>10.77.77.1/24</code>，BMC 会拿到 <code>10.77.77.100</code>。
+                            </p>
+                            <ul>
+                                <li>多数情况下不用改网段，直接点击“开始”。</li>
+                                <li>如果必须改，只能使用私有网段：<code>10.x.x.x</code>、<code>172.16-31.x.x</code>、<code>192.168.x.x</code>。</li>
+                            </ul>
+                        </div>
+                        <img class="tutorial-shot" src="assets/tutorial/step-1-select-adapter.png" alt="选择目标网卡并开始" loading="lazy" />
+                    </section>
+
+                    <section class="tutorial-step">
+                        <div>
+                            <div class="step-kicker">Step 2</div>
+                            <h3>按提示插入网线</h3>
+                            <p>
+                                软件会先配置网卡并启动 DHCP 服务，然后等待链路 UP。此时把网线连接到服务器 IPMI/BMC 管理口。
+                            </p>
+                            <ul>
+                                <li>如果一直停在这里，优先检查网线、网口位置、服务器管理口是否通电。</li>
+                                <li>直连测试时不要让这根线同时接交换机。</li>
+                            </ul>
+                        </div>
+                        <img class="tutorial-shot" src="assets/tutorial/step-2-wait-link.png" alt="等待插入网线" loading="lazy" />
+                    </section>
+
+                    <section class="tutorial-step">
+                        <div>
+                            <div class="step-kicker">Step 3</div>
+                            <h3>链路 UP 后等待 BMC 获取地址</h3>
+                            <p>
+                                检测到链路后，工具继续等待 BMC 发出 DHCP 请求。正常情况下会在几十秒内完成，具体取决于 BMC 启动和 DHCP 重试节奏。
+                            </p>
+                        </div>
+                        <img class="tutorial-shot" src="assets/tutorial/step-3-link-up.png" alt="链路已连接" loading="lazy" />
+                    </section>
+
+                    <section class="tutorial-step">
+                        <div>
+                            <div class="step-kicker">Step 4</div>
+                            <h3>浏览器打开 BMC 页面后再操作</h3>
+                            <p>
+                                页面打开后，说明 DHCP 分配和浏览器启动都已完成。此时可以登录 BMC，按你的目标查看硬件状态、配置远程控制或执行维护操作。
+                            </p>
+                            <p class="tutorial-warning">
+                                不要在 BMC 页面打开后直接拔线退出。先完成 BMC 操作，再回到工具点击“完成 / 退出”。
+                            </p>
+                        </div>
+                        <img class="tutorial-shot" src="assets/tutorial/step-4-opened.png" alt="BMC 管理页面已打开" loading="lazy" />
+                    </section>
+
+                    <section class="tutorial-step">
+                        <div>
+                            <div class="step-kicker">Step 5</div>
+                            <h3>完成后退出，等待网卡恢复 DHCP</h3>
+                            <p>
+                                点击“完成 / 退出”后，工具会关闭内置 DHCP 服务，并把所选网卡恢复为 DHCP。恢复完成后再把网线接回交换机或原网络。
+                            </p>
+                            <ul>
+                                <li>如果恢复失败，窗口会保留错误提示，不会静默退出。</li>
+                                <li>需要排障时，点击左下角“日志”打开日志文件。</li>
+                            </ul>
+                        </div>
+                        <img class="tutorial-shot" src="assets/tutorial/step-5-cleanup.png" alt="退出并恢复 DHCP" loading="lazy" />
+                    </section>
+                </div>
+            </div>
             <div id="error-panel" style="display: none"></div>
 
             <footer>
@@ -716,14 +908,11 @@
             }
 
             function switchTab(name) {
+                const tabNames = ["latest", "history", "tutorial"];
                 document
                     .querySelectorAll(".tab-btn")
                     .forEach((b, i) =>
-                        b.classList.toggle(
-                            "active",
-                            (i === 0 && name === "latest") ||
-                                (i === 1 && name === "history"),
-                        ),
+                        b.classList.toggle("active", tabNames[i] === name),
                     );
 
                 // 重新触发 CSS 动画机制
