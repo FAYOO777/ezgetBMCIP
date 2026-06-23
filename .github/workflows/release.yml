@@ -41,7 +41,6 @@ jobs:
       - name: Build + Publish Full
         run: >
           dotnet publish -c Release -r win-x64
-          -p:Version="${{ github.ref_name }}"
           -p:PublishSingleFile=true
           -p:SelfContained=true
           -p:EnableCompressionInSingleFile=true
@@ -55,7 +54,6 @@ jobs:
       - name: Build + Publish Lite
         run: >
           dotnet publish -c Release -r win-x64
-          -p:Version="${{ github.ref_name }}"
           -p:PublishSingleFile=true
           -p:SelfContained=false
           -p:PublishReadyToRun=false
@@ -63,6 +61,15 @@ jobs:
           -p:Version=${{ steps.release_version.outputs.number }}
           -p:InformationalVersion=${{ steps.release_version.outputs.tag }}
           -o publish/lite
+
+      # ── Legacy (.NET Framework 4.6) ─────────────────────────────
+
+      - name: Build + Publish Legacy
+        run: >
+          dotnet publish ezgetBMCIP.Legacy/ezgetBMCIP.Legacy.csproj -c Release
+          -p:Version=${{ steps.release_version.outputs.number }}
+          -p:InformationalVersion=${{ steps.release_version.outputs.tag }}
+          -o publish/ezgetBMCIP-legacy-net46
 
       - name: Rename artifacts
         shell: pwsh
@@ -85,6 +92,8 @@ jobs:
 
           Copy-Item publish/full/ezgetBMCIP.exe publish/ezgetBMCIP-full.exe
           Copy-Item publish/lite/ezgetBMCIP.exe publish/ezgetBMCIP-lite.exe
+          Remove-Item publish/ezgetBMCIP-legacy-net46/*.pdb -ErrorAction SilentlyContinue
+          Compress-Archive -Path publish/ezgetBMCIP-legacy-net46/* -DestinationPath publish/ezgetBMCIP-legacy-net46.zip -Force
 
           $liteSize = (Get-Item publish/ezgetBMCIP-lite.exe).Length
           if ($liteSize -lt 1000000) {
@@ -99,6 +108,7 @@ jobs:
           files: |
             publish/ezgetBMCIP-full.exe
             publish/ezgetBMCIP-lite.exe
+            publish/ezgetBMCIP-legacy-net46.zip
           body_path: CHANGELOG.md
 
       # ── R2 upload ────────────────────────────────────────────────
@@ -116,8 +126,10 @@ jobs:
         run: |
           $fullSize = (Get-Item publish/ezgetBMCIP-full.exe).Length
           $liteSize = (Get-Item publish/ezgetBMCIP-lite.exe).Length
+          $legacySize = (Get-Item publish/ezgetBMCIP-legacy-net46.zip).Length
           echo "full_size=$fullSize" >> $env:GITHUB_OUTPUT
           echo "lite_size=$liteSize" >> $env:GITHUB_OUTPUT
+          echo "legacy_size=$legacySize" >> $env:GITHUB_OUTPUT
 
       - name: Download existing versions.json from R2
         shell: pwsh
@@ -142,6 +154,7 @@ jobs:
           $prerelease = "${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}" -eq "true"
           $fullSize = ${{ steps.sizes.outputs.full_size }}
           $liteSize = ${{ steps.sizes.outputs.lite_size }}
+          $legacySize = ${{ steps.sizes.outputs.legacy_size }}
           $domain = $env:R2_PUBLIC_DOMAIN
 
           $entry = [PSCustomObject]@{
@@ -160,6 +173,12 @@ jobs:
                 url = "https://$domain/$tag/ezgetBMCIP-lite.exe"
                 size = [long]$liteSize
                 desc = "体积小，下载快，需要系统装有 .NET Desktop Runtime 8.0"
+              },
+              @{
+                name = "ezgetBMCIP-legacy-net46.zip"
+                url = "https://$domain/$tag/ezgetBMCIP-legacy-net46.zip"
+                size = [long]$legacySize
+                desc = "兼容 Windows 7 SP1 / Windows 8 / Windows 8.1，需要 .NET Framework 4.6，解压后运行"
               }
             )
           }
@@ -185,6 +204,7 @@ jobs:
           $endpoint = "https://$env:R2_ACCOUNT_ID.r2.cloudflarestorage.com"
           aws s3 cp publish/ezgetBMCIP-full.exe "s3://$env:R2_BUCKET_NAME/$tag/ezgetBMCIP-full.exe" --endpoint-url $endpoint
           aws s3 cp publish/ezgetBMCIP-lite.exe "s3://$env:R2_BUCKET_NAME/$tag/ezgetBMCIP-lite.exe" --endpoint-url $endpoint
+          aws s3 cp publish/ezgetBMCIP-legacy-net46.zip "s3://$env:R2_BUCKET_NAME/$tag/ezgetBMCIP-legacy-net46.zip" --endpoint-url $endpoint
           Write-Host "Uploaded to R2 /$tag/"
 
       - name: Upload versions.json to R2

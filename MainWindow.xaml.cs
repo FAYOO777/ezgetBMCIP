@@ -10,6 +10,7 @@ public partial class MainWindow : FluentWindow
 {
     private readonly MainViewModel _vm;
     private bool _allowClose;
+    private bool _isClosing;
 
     public MainWindow()
     {
@@ -34,16 +35,7 @@ public partial class MainWindow : FluentWindow
 
     private async void OnRequestClose()
     {
-        if (_allowClose)
-        {
-            Application.Current.Shutdown();
-            return;
-        }
-
-        _allowClose = true;
-        _vm.CancelFlow();
-        await _vm.CleanupAsync();
-        Application.Current.Shutdown();
+        await CleanupAndShutdownAsync();
     }
 
     private async void OnWindowClosing(object? sender, CancelEventArgs e)
@@ -52,9 +44,24 @@ public partial class MainWindow : FluentWindow
             return;
 
         e.Cancel = true;
-        _allowClose = true;
+        await CleanupAndShutdownAsync();
+    }
+
+    private async Task CleanupAndShutdownAsync()
+    {
+        if (_isClosing)
+            return;
+
+        _isClosing = true;
         _vm.CancelFlow();
-        await _vm.CleanupAsync();
+        var cleanupSucceeded = await _vm.CleanupAsync();
+        if (!cleanupSucceeded)
+        {
+            _isClosing = false;
+            return;
+        }
+
+        _allowClose = true;
         Application.Current.Shutdown();
     }
 
@@ -76,5 +83,32 @@ public partial class MainWindow : FluentWindow
     {
         if (!string.IsNullOrEmpty(_vm.DiscoveredIp))
             OnOpenBrowser(_vm.DiscoveredIp);
+    }
+
+    private void OpenLog_Click(object sender, RoutedEventArgs e)
+    {
+        OpenExplorerAt(AppLogger.LogFilePath);
+    }
+
+    private static void OpenExplorerAt(string filePath)
+    {
+        try
+        {
+            var dir = System.IO.Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(dir) && !System.IO.Directory.Exists(dir))
+                System.IO.Directory.CreateDirectory(dir);
+
+            var arg = "/select,\"" + filePath + "\"";
+            Process.Start(new ProcessStartInfo("explorer.exe", arg)
+            {
+                UseShellExecute = false
+            });
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log("Failed to open explorer: " + ex.Message);
+            System.Windows.MessageBox.Show("\u65e0\u6cd5\u6253\u5f00\u65e5\u5fd7\u6587\u4ef6\uff1a" + ex.Message,
+                "ezgetBMCIP", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+        }
     }
 }

@@ -8,6 +8,8 @@ namespace EzGetBmcIp;
 
 internal static class NetworkConfigManager
 {
+    public static Action<string>? Logger { get; set; }
+
     public static List<WiredAdapter> GetWiredAdapters()
     {
         var adapters = GetPhysicalEthernetAdaptersFromWmi();
@@ -63,17 +65,20 @@ internal static class NetworkConfigManager
         return ForceDhcpBestEffortAsync(adapter, config, cancellationToken);
     }
 
-    public static async Task ForceDhcpBestEffortAsync(WiredAdapter adapter, SubnetConfig config, CancellationToken cancellationToken)
+    public static async Task ForceDhcpBestEffortAsync(WiredAdapter adapter, SubnetConfig config, CancellationToken cancellationToken, bool releaseToolLease = false)
     {
-        var details = await RestoreDhcpAndCollectLogAsync(adapter, cancellationToken);
+        var details = await RestoreDhcpAndCollectLogAsync(adapter, config, cancellationToken, releaseToolLease);
         for (var i = 0; i < 10; i++)
         {
             var dhcpEnabled = await IsDhcpEnabledAsync(adapter, cancellationToken);
             var toolIpStillPresent = await HasToolStaticIpAsync(adapter, config, cancellationToken);
-            details += Environment.NewLine + $"verify {i + 1}: dhcpEnabled={dhcpEnabled}, toolIpStillPresent={toolIpStillPresent}";
+            var toolLeaseStillPresent = releaseToolLease && await HasToolLeaseIpAsync(adapter, config, cancellationToken);
+            Logger?.Invoke($"DHCP restore verify {i + 1}: dhcpEnabled={dhcpEnabled}, toolIpStillPresent={toolIpStillPresent}, toolLeaseStillPresent={toolLeaseStillPresent}");
+            details += Environment.NewLine + $"verify {i + 1}: dhcpEnabled={dhcpEnabled}, toolIpStillPresent={toolIpStillPresent}, toolLeaseStillPresent={toolLeaseStillPresent}";
 
-            if (dhcpEnabled && !toolIpStillPresent)
+            if (dhcpEnabled && !toolIpStillPresent && !toolLeaseStillPresent)
             {
+                Logger?.Invoke("DHCP restore verified OK after " + (i + 1) + " attempt(s)");
                 return;
             }
 
@@ -95,7 +100,7 @@ internal static class NetworkConfigManager
     {
         if (origConfig.DhcpEnabled || origConfig.StaticAddresses.Count == 0)
         {
-            await ForceDhcpBestEffortAsync(adapter, subnetConfig, cancellationToken);
+            await ForceDhcpBestEffortAsync(adapter, subnetConfig, cancellationToken, releaseToolLease: true);
             return;
         }
 
@@ -156,20 +161,32 @@ internal static class NetworkConfigManager
 
     public static async Task<bool> HasToolStaticIpAsync(WiredAdapter adapter, SubnetConfig config, CancellationToken cancellationToken)
     {
+        return await HasAdapterIpAsync(adapter, config.ServerIp, cancellationToken);
+    }
+
+    public static async Task<bool> HasToolLeaseIpAsync(WiredAdapter adapter, SubnetConfig config, CancellationToken cancellationToken)
+    {
+        return await HasAdapterIpAsync(adapter, config.PoolStart, cancellationToken);
+    }
+
+    private static async Task<bool> HasAdapterIpAsync(WiredAdapter adapter, string ipAddress, CancellationToken cancellationToken)
+    {
         var command = "$name='" + EscapePowerShellSingleQuoted(adapter.Name) + "'; " +
                       "$ips=Get-NetIPAddress -InterfaceAlias $name -AddressFamily IPv4 -ErrorAction SilentlyContinue; " +
                       "if($ips){$ips.IPAddress}";
         var result = await RunPowerShellAsync(command, cancellationToken, throwOnError: false);
 
         return result.Trim().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
-            .Any(line => line.Trim().Equals(config.ServerIp, StringComparison.OrdinalIgnoreCase));
+            .Any(line => line.Trim().Equals(ipAddress, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static async Task<string> RestoreDhcpAndCollectLogAsync(WiredAdapter adapter, CancellationToken cancellationToken)
+    private static async Task<string> RestoreDhcpAndCollectLogAsync(WiredAdapter adapter, SubnetConfig config, CancellationToken cancellationToken, bool releaseToolLease)
     {
+        var psOutput = await RunPowerShellAsync(BuildDhcpRestoreScript(adapter), cancellationToken, throwOnError: false);
+        Logger?.Invoke("DHCP restore PS output: " + psOutput);
         var outputs = new List<string>
         {
-            await RunPowerShellAsync(BuildDhcpRestoreScript(adapter), cancellationToken, throwOnError: false)
+            psOutput
         };
 
         var commands = new[]
@@ -177,14 +194,25 @@ internal static class NetworkConfigManager
             $"interface ipv4 set address name=\"{adapter.Name}\" source=dhcp",
             $"interface ip set address name=\"{adapter.Name}\" source=dhcp",
             $"interface ipv4 set dnsservers name=\"{adapter.Name}\" source=dhcp",
-            $"interface ip set dns name=\"{adapter.Name}\" source=dhcp"
+            $"interface ip set dns name=\"{adapter.Name}\" source=dhcp",
+            $"interface ipv4 delete address name=\"{adapter.Name}\" addr={config.ServerIp}",
+            $"interface ip delete address name=\"{adapter.Name}\" addr={config.ServerIp}"
         };
 
         foreach (var command in commands)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var output = await RunProcessAsync("netsh.exe", command, cancellationToken, throwOnError: false);
+            Logger?.Invoke("DHCP restore netsh: " + command + " -> " + output.Trim());
             outputs.Add("> netsh " + command + Environment.NewLine + output.Trim());
+        }
+
+        if (releaseToolLease)
+        {
+            var releaseCommand = $"/release \"{adapter.Name}\"";
+            var releaseOutput = await RunProcessAsync("ipconfig.exe", releaseCommand, cancellationToken, throwOnError: false);
+            Logger?.Invoke("DHCP restore ipconfig: " + releaseCommand + " -> " + releaseOutput.Trim());
+            outputs.Add("> ipconfig " + releaseCommand + Environment.NewLine + releaseOutput.Trim());
         }
 
         return string.Join(Environment.NewLine, outputs);
@@ -304,6 +332,9 @@ internal static class NetworkConfigManager
         {
             "virtual",
             "vpn",
+            "vnic",
+            "tap",
+            "tun",
             "loopback",
             "qos packet scheduler",
             "wfp",
@@ -317,7 +348,14 @@ internal static class NetworkConfigManager
             "wifi",
             "wi-fi",
             "bluetooth",
-            "802.11"
+            "802.11",
+            "wintun",
+            "tunnel",
+            "wireguard",
+            "sangfor",
+            "atrust",
+            "ppp",
+            "wan miniport"
         };
 
         return !blocked.Any(text.Contains);
@@ -343,8 +381,13 @@ internal static class NetworkConfigManager
 
         process.Start();
         var stdout = process.StandardOutput.ReadToEnd();
+        var stderr = process.StandardError.ReadToEnd();
         process.WaitForExit();
-        return stdout;
+
+        if (!string.IsNullOrWhiteSpace(stderr))
+            Logger?.Invoke("PowerShell stderr: " + stderr);
+
+        return string.IsNullOrWhiteSpace(stdout) ? stderr : stdout + "\r\n" + stderr;
     }
 
     private static string TrimBraces(string value)
@@ -403,9 +446,30 @@ internal static class NetworkConfigManager
         process.Start();
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
         var stderrTask = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync(cancellationToken);
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (!process.HasExited)
+        {
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch
+            {
+            }
+
+            throw;
+        }
         var stdout = await stdoutTask;
         var stderr = await stderrTask;
+
+        var logArgs = FormatArgsForLog(fileName, arguments);
+        if (process.ExitCode != 0)
+            Logger?.Invoke($"Process exit={process.ExitCode}: {fileName} {logArgs}\r\n{stderr}");
+        else if (!string.IsNullOrWhiteSpace(stderr))
+            Logger?.Invoke($"Process stderr: {fileName}\r\n{stderr}");
 
         if (throwOnError && process.ExitCode != 0)
         {
@@ -413,6 +477,18 @@ internal static class NetworkConfigManager
         }
 
         return stdout + stderr;
+    }
+
+    private static string FormatArgsForLog(string fileName, string arguments)
+    {
+        var exeName = System.IO.Path.GetFileName(fileName);
+        if (exeName.Equals("powershell.exe", StringComparison.OrdinalIgnoreCase)
+            && arguments.Contains("-EncodedCommand"))
+        {
+            var idx = arguments.IndexOf("-EncodedCommand", StringComparison.OrdinalIgnoreCase);
+            return arguments.Substring(0, idx + "-EncodedCommand".Length) + " [...]";
+        }
+        return arguments;
     }
 
     private static string EscapePowerShellSingleQuoted(string value)

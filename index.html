@@ -548,8 +548,8 @@
                     />
                 </svg>
                 <h1>ezgetBMCIP</h1>
-                <p>获取BMC的IP，应该可以变得更简单</p>
-                <span class="compat-badge">Windows 10 / 11 &middot; x64</span>
+                <p>直连 IPMI/BMC 管理口时临时提供 DHCP 地址</p>
+                <span class="compat-badge">Windows 7 SP1+ / 8 / 8.1 / 10 / 11</span>
             </header>
 
             <div class="tabs-wrapper">
@@ -598,7 +598,9 @@
             }
 
             function assetRow(asset, large) {
-                const isLite = asset.name.includes("lite");
+                const lowerName = asset.name.toLowerCase();
+                const isLite = lowerName.includes("lite");
+                const isLegacy = lowerName.includes("legacy");
                 // 将 size 和 notice 放在同一行的 meta 区域
                 return `<div class="${large ? "hero-asset" : "asset-row"}">
     <div class="asset-info">
@@ -611,6 +613,11 @@
                 ? `<span class="runtime-notice">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             需要 <a href="https://dotnet.microsoft.com/en-us/download/dotnet/8.0">.NET Desktop Runtime 8.0</a>
+        </span>`
+                : large && isLegacy
+                  ? `<span class="runtime-notice">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            需要 <a href="https://dotnet.microsoft.com/en-us/download/dotnet-framework/net46">.NET Framework 4.6</a>，解压整个文件夹运行
         </span>`
                 : ""
         }
@@ -645,26 +652,28 @@
       ${(latestStable.assets || []).map((a) => assetRow(a, true)).join("")}
     </div>
     <div class="intro-card">
-      <p style="font-size:14px;">获取BMC的IP，应该可以变得更简单。直连服务器 IPMI/BMC 管理口，自动配网段、起 DHCP、开 BMC 页面，全程无需手动操作。</p>
-      <p style="font-size:13px;">基于 WPF-UI 4.x，Win11 Mica 云母材质，自动跟随系统亮/暗主题。</p>
+      <p style="font-size:14px;">这个工具用于笔记本直连服务器 IPMI/BMC 管理口的场景。它会临时配置所选网卡，启动内置 DHCP 服务，等待 BMC 获取地址后打开管理页面。</p>
+      <p style="font-size:13px;">Windows 10/11 使用 Full 或 Lite；Windows 7 SP1 / 8 / 8.1 使用 Legacy。</p>
 
       <h3>使用提示</h3>
-      <p>运行后选网卡 → 插网线 → 等自动打开 BMC 页面 → 登录操作 → 点"完成 / 退出"。</p>
+      <p>运行后选择网卡 → 连接 IPMI/BMC 管理口 → 等待页面打开 → 操作完成后点击"完成 / 退出"。</p>
       <ul>
-        <li>程序退出前<strong>自动还原网卡配置</strong>，请尽量通过按钮关闭；直接关窗口也会触发还原。</li>
+        <li>退出前会<strong>恢复所选网卡为 DHCP</strong>，不会恢复为原来的静态 IP 配置。</li>
         <li>需要<strong>管理员权限</strong>，启动时自动 UAC 提权。</li>
         <li>确保网线插在服务器的 <strong>IPMI 专用管理口</strong>，不是普通网口。</li>
+        <li>自定义网段只支持私有 IPv4：<code>10.x.x.x</code>、<code>172.16-31.x.x</code>、<code>192.168.x.x</code>。</li>
       </ul>
 
       <h3>功能</h3>
       <ul>
         <li>🖥️ 检测有线网卡，多网卡时可选</li>
-        <li>📝 退出时自动还原网卡为 DHCP 模式</li>
+        <li>📝 退出时恢复所选网卡为 DHCP 模式</li>
         <li>🔧 临时配置本机为 <code>10.77.77.1/255.255.255.0</code></li>
-        <li>📡 内嵌 DHCP Server（地址池 <code>10.77.77.100</code> ~ <code>10.77.77.200</code>）</li>
+        <li>📡 内嵌 DHCP Server（直连场景固定分配 <code>.100</code>）</li>
+        <li>🧓 Legacy 版面向 Windows 7 SP1 / 8 / 8.1</li>
         <li>🔗 WMI/CIM 轮询网卡链路状态</li>
-        <li>🌐 获取 IPMI IP 后自动调用浏览器打开 BMC 页面</li>
-        <li>🧹 关闭时自动停 DHCP、还原网卡</li>
+        <li>🌐 获取 IPMI IP 后调用浏览器打开 BMC 页面</li>
+        <li>🧹 关闭时停止 DHCP、恢复所选网卡为 DHCP</li>
         <li>🪜 5 步可视化进度指示，失败时明确提示</li>
         <li>🌗 自动跟随 Windows 系统亮/暗主题</li>
       </ul>
@@ -674,8 +683,8 @@
         <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:var(--accent);white-space:nowrap;vertical-align:top;">1. 配置本机网卡</td><td style="padding:4px 0;">设为 10.77.77.1 → 启动 DHCP</td></tr>
         <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:var(--accent);white-space:nowrap;vertical-align:top;">2. 连接网线</td><td style="padding:4px 0;">等待网线插入 IPMI 管理口，检测 Link UP</td></tr>
         <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:var(--accent);white-space:nowrap;vertical-align:top;">3. 获取 IPMI IP</td><td style="padding:4px 0;">DHCP 监听 IPMI 请求，自动获取地址</td></tr>
-        <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:var(--accent);white-space:nowrap;vertical-align:top;">4. 打开 BMC</td><td style="padding:4px 0;">浏览器自动打开 <code>http://&lt;IPMI IP&gt;</code></td></tr>
-        <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:var(--accent);white-space:nowrap;vertical-align:top;">5. 清理退出</td><td style="padding:4px 0;">关闭 DHCP Server，还原网卡为 DHCP</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:var(--accent);white-space:nowrap;vertical-align:top;">4. 打开 BMC</td><td style="padding:4px 0;">使用浏览器打开 <code>http://&lt;IPMI IP&gt;</code></td></tr>
+        <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:var(--accent);white-space:nowrap;vertical-align:top;">5. 清理退出</td><td style="padding:4px 0;">关闭 DHCP Server，恢复所选网卡为 DHCP</td></tr>
       </table>
     </div>`;
 

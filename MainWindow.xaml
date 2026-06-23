@@ -62,7 +62,7 @@
                         </TextBlock>
                         <TextBlock FontSize="13" Margin="0,0,0,20" TextWrapping="Wrap"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}">
-                            工具会临时修改选择的网卡 IP 配置，退出时自动还原为 DHCP。
+                            工具会临时修改选择的网卡 IP 配置，退出时自动恢复为 DHCP。
                         </TextBlock>
 
                         <ui:Button Content="下一步 →"
@@ -210,6 +210,9 @@
                             <Run Text="BMC 固定地址: "/>
                             <Run Text="{Binding SubnetConfig.PoolDisplay, Mode=OneWay}"/>
                         </TextBlock>
+                        <TextBlock HorizontalAlignment="Center" Margin="0,4,0,0" FontSize="11"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Text="仅支持私有网段：10.x.x.x / 172.16-31.x.x / 192.168.x.x" />
                     </StackPanel>
                 </Border>
 
@@ -492,8 +495,19 @@
                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                VerticalAlignment="Center" />
                     <TextBlock Text=" · " FontSize="11"
-                               Foreground="{DynamicResource CardStrokeColorDefaultBrush}"
-                               VerticalAlignment="Center" />
+                                Foreground="{DynamicResource CardStrokeColorDefaultBrush}"
+                                VerticalAlignment="Center" />
+                    <TextBlock FontSize="11" VerticalAlignment="Center"
+                                Cursor="Hand">
+                        <Hyperlink Click="OpenLog_Click"
+                                    Foreground="{DynamicResource AccentFillColorDefaultBrush}"
+                                    TextDecorations="None">
+                            日志
+                        </Hyperlink>
+                    </TextBlock>
+                    <TextBlock Text=" · " FontSize="11"
+                                Foreground="{DynamicResource CardStrokeColorDefaultBrush}"
+                                VerticalAlignment="Center" />
                     <TextBlock FontSize="11" VerticalAlignment="Center"
                                Cursor="Hand">
                         <Hyperlink NavigateUri="{Binding GitHubUrl}"
@@ -506,6 +520,7 @@
                 </StackPanel>
                 <ui:Button Content="完成 / 退出"
                         Command="{Binding ExitCommand}"
+                        IsEnabled="{Binding ExitButtonEnabled}"
                         Appearance="Secondary"
                         HorizontalAlignment="Right" VerticalAlignment="Center"
                         Width="130" Height="40" />

@@ -26,6 +26,7 @@ internal sealed class DhcpServer : IDisposable
     }
 
     public event EventHandler<DhcpLease>? LeaseAssigned;
+    public Action<string>? Logger { get; set; }
 
     public void Start()
     {
@@ -34,6 +35,7 @@ internal sealed class DhcpServer : IDisposable
             return;
         }
 
+        Logger?.Invoke("DHCP server starting on " + _serverIp + ":" + DhcpServerPort);
         _cts = new CancellationTokenSource();
         _udp = new UdpClient(AddressFamily.InterNetwork);
         _udp.EnableBroadcast = true;
@@ -44,12 +46,14 @@ internal sealed class DhcpServer : IDisposable
 
     public void Stop()
     {
+        Logger?.Invoke("DHCP server stopping");
         _cts?.Cancel();
         _udp?.Close();
         _udp?.Dispose();
         _udp = null;
         _cts?.Dispose();
         _cts = null;
+        Logger?.Invoke("DHCP server stopped");
     }
 
     public void Dispose() => Stop();
@@ -111,6 +115,7 @@ internal sealed class DhcpServer : IDisposable
             if (opt50 is { Length: 4 })
             {
                 var requestedIp = new IPAddress(opt50);
+                Logger?.Invoke("DHCP: Requested IP (Option 50) = " + requestedIp);
                 lock (_sync)
                 {
                     var requestedLease = _leases.Values.FirstOrDefault(l => l.IpAddress.Equals(requestedIp));
@@ -125,6 +130,12 @@ internal sealed class DhcpServer : IDisposable
         }
 
         var responseType = messageType == 1 ? (byte)2 : (byte)5;
+
+        if (messageType == 1)
+            Logger?.Invoke("DHCP: DISCOVER from " + MacBytesToString(mac) + " -> OFFER " + lease.IpAddress);
+        else
+            Logger?.Invoke("DHCP: REQUEST from " + MacBytesToString(mac) + " -> ACK " + lease.IpAddress);
+
         var response = BuildResponse(request, mac, lease.IpAddress, responseType, _serverIp);
         var destination = new IPEndPoint(IPAddress.Broadcast, DhcpClientPort);
         if (_udp is not null)
@@ -134,9 +145,12 @@ internal sealed class DhcpServer : IDisposable
 
         if (responseType == 5)
         {
+            Logger?.Invoke("DHCP: lease assigned " + lease.IpAddress + " to " + MacBytesToString(mac));
             LeaseAssigned?.Invoke(this, lease);
         }
     }
+
+    private static string MacBytesToString(byte[] mac) => string.Join("-", mac.Select(b => b.ToString("X2")));
 
     private DhcpLease GetOrCreateLease(byte[] mac)
     {

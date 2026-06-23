@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net46</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <LangVersion>8</LangVersion>
+    <RootNamespace>EzGetBmcIp.Legacy</RootNamespace>
+    <AssemblyName>ezgetBMCIP-legacy</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ezgetBMCIP.Core.Legacy\ezgetBMCIP.Core.Legacy.csproj" />
+  </ItemGroup>
+</Project>

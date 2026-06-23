@@ -9,13 +9,13 @@
     <ApplicationIcon>ezgetBMCIP.ico</ApplicationIcon>
     <AssemblyName>ezgetBMCIP</AssemblyName>
     <RootNamespace>EzGetBmcIp</RootNamespace>
-    <Version>1.2.0</Version>
+    <Version>1.3.0</Version>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**;ezgetBMCIP.Core\**;ezgetBMCIP.Core.Legacy\**;ezgetBMCIP.Legacy\**</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="WPF-UI" Version="4.*" />

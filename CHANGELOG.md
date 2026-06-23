@@ -1,5 +1,13 @@
 ## ezgetBMCIP 更新日志
 
+### v1.3.0 (2026-06-23)
+- 🧓 新增 Legacy 版：面向 Windows 7 SP1 / Windows 8 / Windows 8.1，基于 .NET Framework 4.6，部署时复制整个 `ezgetBMCIP-legacy-net46` 文件夹。
+- 🛠️ Legacy 适配旧系统网络栈：使用 WMI / netsh / 注册表路径替代 Win10+ PowerShell cmdlet。
+- 🧹 强化退出恢复 DHCP：关闭内置 DHCP Server 后恢复网卡 DHCP，Legacy 会清理 Win7/8 系列 DHCP lease/option 注册表缓存，避免接回交换机后仍保留工具分配的 IP。
+- 📝 完整诊断日志：主线日志写入 `%LOCALAPPDATA%\ezgetBMCIP\ezgetBMCIP.log`，Legacy 日志写入 `%TEMP%\ezgetBMCIP.log`，应用内提供日志入口。
+- 🛡️ 自定义网段限制为私有 IPv4：`10.x.x.x`、`172.16-31.x.x`、`192.168.x.x`，避免公网地址被代理/路由策略干扰。
+- ✅ 已验证：Win10/11 主线 Lite 回归通过；Legacy 已在 Windows 7 SP1 和 Windows 8.1 实体机通过完整链路验证；Windows 8 按同技术路径默认兼容。
+
 ### v1.2.0 (2026-05-27)
 - 🆕 自定义网段：4 输入框手动修改 IP，第 4 段自动保护 BMC 固定地址 .100
 - 🆕 启动页两步化：准备 → 选网卡，Prep 卡片居中悬浮

@@ -41,6 +41,12 @@ public sealed class SubnetConfig : INotifyPropertyChanged
     public string PoolStart => $"{Octet1}.{Octet2}.{Octet3}.100";
     public string PoolDisplay => $"{Octet1}.{Octet2}.{Octet3}.100";
     public string ServerDisplay => ServerIp + " / 24";
+    public bool IsPrivateSubnet => Octet1 == 10
+        || (Octet1 == 172 && Octet2 >= 16 && Octet2 <= 31)
+        || (Octet1 == 192 && Octet2 == 168);
+    public string? ValidationError => IsPrivateSubnet
+        ? null
+        : "自定义网段必须使用私有 IPv4 地址段：10.x.x.x、172.16-31.x.x 或 192.168.x.x。";
 
     public string Octet1Text { get => _octet1.ToString(); set => TryParseOctet(value, v => Octet1 = v, 1, 223); }
     public string Octet2Text { get => _octet2.ToString(); set => TryParseOctet(value, v => Octet2 = v, 0, 255); }
@@ -56,6 +62,8 @@ public sealed class SubnetConfig : INotifyPropertyChanged
         OnPropertyChanged(nameof(PoolStart));
         OnPropertyChanged(nameof(PoolDisplay));
         OnPropertyChanged(nameof(ServerDisplay));
+        OnPropertyChanged(nameof(IsPrivateSubnet));
+        OnPropertyChanged(nameof(ValidationError));
     }
 
     private void OnChanged()
@@ -73,6 +81,9 @@ public sealed class SubnetConfig : INotifyPropertyChanged
         OnPropertyChanged(nameof(Mask));
         OnPropertyChanged(nameof(PoolStart));
         OnPropertyChanged(nameof(ServerDisplay));
+        OnPropertyChanged(nameof(PoolDisplay));
+        OnPropertyChanged(nameof(IsPrivateSubnet));
+        OnPropertyChanged(nameof(ValidationError));
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
