@@ -62,7 +62,7 @@ publish\
 - Legacy 压缩包内置 `使用教程.txt`，提示用户先安装 .NET Framework 4.6，再运行 `ezgetBMCIP-legacy.exe`
 - 支持操作系统：Windows 7 SP1 / Windows 8 / Windows 8.1 / Windows 10 / Windows 11
 - Legacy 版不是 self-contained / single-file 发布，部署前请先确认目标机器已安装 .NET Framework
-- .NET Framework 4.6 下载：<https://dotnet.microsoft.com/en-us/download/dotnet-framework/net46>
+- .NET Framework 4.6 下载：<https://www.microsoft.com/zh-cn/download/details.aspx?id=48137>
 
 ## 构建命令
 

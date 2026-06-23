@@ -87,7 +87,7 @@ Version: $versionTag
 === Runtime Requirement ===
 .NET Framework 4.6 must be installed on the target machine.
 If it is not installed, run NDP46-KB3045557-x86-x64-AllOS-ENU.exe from this folder first.
-Official download page: https://dotnet.microsoft.com/en-us/download/dotnet-framework/net46
+Official download page: https://www.microsoft.com/zh-cn/download/details.aspx?id=48137
 
 Windows 7 SP1 / Windows 8 / Windows 8.1 are supported.
 This is NOT a self-contained / single-file build.

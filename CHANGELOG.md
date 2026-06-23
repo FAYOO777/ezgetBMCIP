@@ -1,5 +1,8 @@
 ## ezgetBMCIP 更新日志
 
+### v1.3.3 (2026-06-23)
+- 将 `.NET Framework 4.6` 官方下载链接改为 Microsoft Download Center 离线安装包页面。
+
 ### v1.3.2 (2026-06-23)
 - Legacy 压缩包新增 `使用教程.txt`，提示旧系统用户先安装包内 `.NET Framework 4.6` 离线安装包，再运行 Legacy 程序。
 
