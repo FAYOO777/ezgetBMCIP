@@ -1,0 +1,945 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>ezgetBMCIP - 下载</title>
+        <link rel="icon" type="image/svg+xml" href="/favicon/favicon.svg" />
+        <link
+            rel="icon"
+            type="image/png"
+            sizes="32x32"
+            href="/favicon/favicon-32x32.png"
+        />
+        <link
+            rel="icon"
+            type="image/png"
+            sizes="16x16"
+            href="/favicon/favicon-16x16.png"
+        />
+        <link
+            rel="apple-touch-icon"
+            sizes="180x180"
+            href="/favicon/apple-touch-icon.png"
+        />
+        <link rel="manifest" href="/favicon/site.webmanifest" />
+        <!-- Fonts -->
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+            rel="stylesheet"
+        />
+
+        <style>
+            :root {
+                /* 亮色模式调色板 */
+                --bg: #fafafa;
+                --card-bg: #ffffff;
+                --border: #e5e7eb;
+                --text-main: #111827;
+                --text-muted: #6b7280;
+                --accent: #0ea5e9;
+                --accent-hover: #0284c7;
+                --success: #10b981;
+                --success-bg: #d1fae5;
+                --warn: #d97706;
+                --warn-bg: #fef3c7;
+
+                --radius-lg: 16px;
+                --radius-md: 10px;
+                --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+                --shadow-md:
+                    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+                    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+                --shadow-lg:
+                    0 10px 25px -3px rgba(0, 0, 0, 0.05),
+                    0 4px 6px -2px rgba(0, 0, 0, 0.025);
+
+                --tab-track: #f3f4f6;
+                --tab-active: #ffffff;
+            }
+
+            @media (prefers-color-scheme: dark) {
+                :root {
+                    /* 暗色模式调色板 */
+                    --bg: #0f172a;
+                    --card-bg: #1e293b;
+                    --border: #334155;
+                    --text-main: #f8fafc;
+                    --text-muted: #94a3b8;
+                    --accent: #38bdf8;
+                    --accent-hover: #7dd3fc;
+                    --success: #34d399;
+                    --success-bg: rgba(16, 185, 129, 0.15);
+                    --warn: #fbbf24;
+                    --warn-bg: rgba(217, 119, 6, 0.15);
+
+                    --shadow-lg: 0 10px 25px -3px rgba(0, 0, 0, 0.5);
+
+                    --tab-track: #0b1120;
+                    --tab-active: #1e293b;
+                }
+            }
+
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            html {
+                scrollbar-gutter: stable;
+            }
+
+            body {
+                font-family:
+                    "Inter",
+                    -apple-system,
+                    BlinkMacSystemFont,
+                    "Segoe UI",
+                    "Microsoft YaHei",
+                    sans-serif;
+                background-color: var(--bg);
+                color: var(--text-main);
+                line-height: 1.6;
+                min-height: 100vh;
+                /* 顶部添加一个微弱的光晕背景 */
+                background-image: radial-gradient(
+                    circle at 50% 0%,
+                    rgba(14, 165, 233, 0.1) 0%,
+                    transparent 50%
+                );
+                background-repeat: no-repeat;
+                -webkit-font-smoothing: antialiased;
+            }
+
+            .container {
+                max-width: 920px;
+                margin: 0 auto;
+                padding: 60px 24px 80px;
+            }
+
+            /* --- Header --- */
+            header {
+                text-align: center;
+                margin-bottom: 40px;
+                animation: fadeDown 0.6s ease-out;
+            }
+            header svg {
+                width: 72px;
+                height: 72px;
+                margin-bottom: 16px;
+                filter: drop-shadow(0 8px 16px rgba(14, 165, 233, 0.2));
+                transition: transform 0.3s ease;
+            }
+            header svg:hover {
+                transform: scale(1.05) rotate(-3deg);
+            }
+            header h1 {
+                font-size: 32px;
+                font-weight: 800;
+                letter-spacing: -0.02em;
+                margin-bottom: 8px;
+                background: linear-gradient(
+                    135deg,
+                    var(--text-main),
+                    var(--text-muted)
+                );
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+            }
+            header p {
+                color: var(--text-muted);
+                font-size: 15px;
+                font-weight: 400;
+            }
+            .compat-badge {
+                display: inline-block;
+                margin-top: 12px;
+                padding: 4px 12px;
+                background: var(--tab-track);
+                border: 1px solid var(--border);
+                border-radius: 20px;
+                font-size: 12px;
+                color: var(--text-muted);
+                font-weight: 500;
+            }
+
+            /* --- Tabs --- */
+            .tabs-wrapper {
+                display: flex;
+                justify-content: center;
+                margin-bottom: 32px;
+            }
+            .tabs {
+                display: inline-flex;
+                flex-wrap: wrap;
+                justify-content: center;
+                background: var(--tab-track);
+                padding: 4px;
+                border-radius: 12px;
+                border: 1px solid var(--border);
+            }
+            .tab-btn {
+                padding: 8px 24px;
+                border: none;
+                background: transparent;
+                color: var(--text-muted);
+                font-size: 14px;
+                font-weight: 600;
+                border-radius: 8px;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                font-family: inherit;
+            }
+            .tab-btn:hover {
+                color: var(--text-main);
+            }
+            .tab-btn.active {
+                background: var(--tab-active);
+                color: var(--text-main);
+                box-shadow: var(--shadow-sm);
+            }
+
+            /* --- Panel & Animations --- */
+            .tab-panel {
+                display: none;
+            }
+            .tab-panel.active {
+                display: block;
+                animation: fadeInUp 0.4s ease-out forwards;
+            }
+
+            @keyframes fadeInUp {
+                from {
+                    opacity: 0;
+                    transform: translateY(10px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+            @keyframes fadeDown {
+                from {
+                    opacity: 0;
+                    transform: translateY(-15px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+
+            /* --- Cards --- */
+            .hero-card,
+            .version-card {
+                background: var(--card-bg);
+                border-radius: var(--radius-lg);
+                padding: 32px;
+                margin-bottom: 24px;
+                border: 1px solid var(--border);
+                box-shadow: var(--shadow-lg);
+                transition:
+                    transform 0.2s ease,
+                    box-shadow 0.2s ease;
+            }
+
+            .hero-card {
+                /* 突出强调最新版，顶部加一条渐变强调线 */
+                position: relative;
+                overflow: hidden;
+            }
+            .hero-card::before {
+                content: "";
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 4px;
+                background: linear-gradient(
+                    90deg,
+                    var(--accent),
+                    var(--success)
+                );
+            }
+
+            .version-card {
+                padding: 24px 32px;
+                box-shadow: var(--shadow-md);
+            }
+            .version-card:hover {
+                transform: translateY(-2px);
+                box-shadow: var(--shadow-lg);
+            }
+
+            .intro-card {
+                background: var(--card-bg);
+                border-radius: var(--radius-lg);
+                padding: 28px 32px;
+                margin-bottom: 24px;
+                border: 1px solid var(--border);
+                box-shadow: var(--shadow-md);
+                position: relative;
+                overflow: hidden;
+            }
+            .intro-card::before {
+                content: "";
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 4px;
+                background: var(--accent);
+            }
+            .intro-card h3 {
+                font-size: 17px;
+                font-weight: 700;
+                margin: 0 0 8px;
+                color: var(--accent);
+            }
+            .intro-card p {
+                color: var(--text-muted);
+                font-size: 14px;
+                line-height: 1.7;
+                margin: 0 0 12px;
+            }
+            .intro-card ul {
+                margin: 0 0 12px;
+                padding-left: 20px;
+                color: var(--text-muted);
+                font-size: 13px;
+                line-height: 1.8;
+            }
+            .intro-card ul li {
+                margin-bottom: 2px;
+            }
+
+            .tutorial-card {
+                background: var(--card-bg);
+                border-radius: var(--radius-lg);
+                padding: 32px;
+                border: 1px solid var(--border);
+                box-shadow: var(--shadow-lg);
+            }
+            .tutorial-lead {
+                color: var(--text-muted);
+                font-size: 14px;
+                margin: 0 0 24px;
+                max-width: 720px;
+            }
+            .tutorial-note {
+                border: 1px solid var(--border);
+                border-left: 4px solid var(--accent);
+                border-radius: var(--radius-md);
+                padding: 14px 16px;
+                margin-bottom: 28px;
+                color: var(--text-muted);
+                font-size: 13px;
+                background: var(--tab-track);
+            }
+            .tutorial-step {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr);
+                gap: 14px;
+                padding: 28px 0;
+                border-top: 1px solid var(--border);
+            }
+            .tutorial-step:first-of-type {
+                border-top: 0;
+                padding-top: 0;
+            }
+            .step-kicker {
+                color: var(--accent);
+                font-size: 12px;
+                font-weight: 700;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                margin-bottom: 4px;
+            }
+            .tutorial-step h3 {
+                font-size: 20px;
+                line-height: 1.35;
+                margin: 0 0 8px;
+            }
+            .tutorial-step p {
+                color: var(--text-muted);
+                font-size: 14px;
+                margin: 0 0 8px;
+            }
+            .tutorial-step ul {
+                color: var(--text-muted);
+                font-size: 13px;
+                line-height: 1.8;
+                padding-left: 20px;
+                margin: 0;
+            }
+            .tutorial-shot {
+                display: block;
+                width: 100%;
+                border-radius: 14px;
+                border: 1px solid var(--border);
+                box-shadow: var(--shadow-md);
+                background: #111827;
+            }
+            .tutorial-warning {
+                color: var(--warn);
+                font-size: 13px;
+                margin-top: 8px;
+            }
+
+            .hero-tag {
+                font-size: 28px;
+                font-weight: 800;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                margin-bottom: 8px;
+            }
+            .hero-date,
+            .version-date {
+                color: var(--text-muted);
+                font-size: 14px;
+            }
+            .hero-date {
+                margin-bottom: 24px;
+            }
+
+            .version-header {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                margin-bottom: 20px;
+                padding-bottom: 16px;
+                border-bottom: 1px dashed var(--border);
+            }
+            .version-tag {
+                font-size: 20px;
+                font-weight: 700;
+            }
+
+            /* --- Badges --- */
+            .badge {
+                font-size: 12px;
+                font-weight: 600;
+                padding: 4px 10px;
+                border-radius: 20px;
+                letter-spacing: 0.5px;
+            }
+            .badge-stable {
+                background: var(--success-bg);
+                color: var(--success);
+            }
+            .badge-beta {
+                background: var(--warn-bg);
+                color: var(--warn);
+            }
+
+            /* --- Assets List --- */
+            .asset-row,
+            .hero-asset {
+                display: flex;
+                align-items: center;
+                gap: 16px;
+                padding: 16px 0;
+            }
+            .asset-row + .asset-row,
+            .hero-asset + .hero-asset {
+                border-top: 1px solid var(--border);
+            }
+            .asset-info {
+                flex: 1;
+                min-width: 0;
+            }
+            .asset-name {
+                font-weight: 600;
+                font-size: 16px;
+                color: var(--text-main);
+                margin-bottom: 4px;
+            }
+            .asset-desc {
+                color: var(--text-muted);
+                font-size: 13px;
+            }
+            .asset-meta {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                margin-top: 6px;
+            }
+            .asset-size {
+                color: var(--text-muted);
+                font-size: 12px;
+                background: var(--tab-track);
+                padding: 2px 8px;
+                border-radius: 6px;
+            }
+            .runtime-notice {
+                font-size: 12px;
+                color: var(--warn);
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+            }
+            .runtime-notice a {
+                color: inherit;
+                text-decoration: underline;
+                text-underline-offset: 2px;
+            }
+
+            /* --- Buttons --- */
+            .dl-btn {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                background: var(--accent);
+                color: #fff;
+                border: none;
+                border-radius: var(--radius-md);
+                padding: 12px 24px;
+                font-size: 14px;
+                font-weight: 600;
+                cursor: pointer;
+                text-decoration: none;
+                white-space: nowrap;
+                transition: all 0.2s ease;
+                box-shadow: 0 4px 14px 0 rgba(14, 165, 233, 0.39);
+            }
+            .dl-btn:hover {
+                background: var(--accent-hover);
+                transform: translateY(-2px);
+                box-shadow: 0 6px 20px rgba(14, 165, 233, 0.23);
+            }
+            .dl-btn:active {
+                transform: translateY(0);
+            }
+            .dl-btn-sm {
+                padding: 8px 16px;
+                font-size: 13px;
+                box-shadow: none;
+                background: var(--tab-track);
+                color: var(--text-main);
+            }
+            .dl-btn-sm:hover {
+                background: var(--border);
+                box-shadow: none;
+            }
+
+            /* --- Loading & Error --- */
+            .spinner {
+                display: inline-block;
+                width: 24px;
+                height: 24px;
+                border: 3px solid var(--border);
+                border-top-color: var(--accent);
+                border-radius: 50%;
+                animation: spin 0.8s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+            }
+            @keyframes spin {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+            #loading {
+                text-align: center;
+                padding: 60px 0;
+            }
+            .error-box {
+                background: var(--card-bg);
+                border: 1px solid var(--warn);
+                border-radius: var(--radius-lg);
+                padding: 32px;
+                text-align: center;
+                box-shadow: var(--shadow-md);
+            }
+            .error-box p {
+                margin-bottom: 12px;
+            }
+            .error-box a {
+                color: var(--accent);
+                text-decoration: none;
+                font-weight: 600;
+            }
+
+            /* --- Footer --- */
+            footer {
+                text-align: center;
+                margin-top: 60px;
+                color: var(--text-muted);
+                font-size: 13px;
+            }
+            footer a {
+                color: var(--text-muted);
+                text-decoration: none;
+                font-weight: 500;
+                transition: color 0.2s;
+            }
+            footer a:hover {
+                color: var(--accent);
+            }
+
+            @media (max-width: 640px) {
+                .container {
+                    padding: 36px 16px 56px;
+                }
+                .tab-btn {
+                    padding: 8px 14px;
+                }
+                .hero-card,
+                .version-card,
+                .intro-card,
+                .tutorial-card {
+                    padding: 22px;
+                }
+                .tutorial-step {
+                    padding: 22px 0;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <header>
+                <svg
+                    viewBox="0 0 457 234"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                >
+                    <defs>
+                        <linearGradient
+                            id="g"
+                            x1="122"
+                            y1="117"
+                            x2="367"
+                            y2="117"
+                            gradientUnits="userSpaceOnUse"
+                        >
+                            <stop stop-color="#0EA5E9" />
+                            <stop offset="1" stop-color="#10B981" />
+                        </linearGradient>
+                    </defs>
+                    <path
+                        d="M340 90c15 0 27 12 27 27s-12 27-27 27H149c-15 0-27-12-27-27s12-27 27-27h191Z"
+                        fill="url(#g)"
+                    />
+                    <circle cx="117" cy="117" r="117" fill="#0EA5E9" />
+                    <circle
+                        cx="117"
+                        cy="117"
+                        r="58"
+                        fill="white"
+                        opacity=".35"
+                    />
+                    <circle cx="372" cy="117" r="85" fill="#10B981" />
+                    <circle
+                        cx="372"
+                        cy="117"
+                        r="40"
+                        fill="white"
+                        opacity=".42"
+                    />
+                </svg>
+                <h1>ezgetBMCIP</h1>
+                <p>直连 IPMI/BMC 管理口时临时提供 DHCP 地址</p>
+                <span class="compat-badge">Windows 7 SP1+ / 8 / 8.1 / 10 / 11</span>
+            </header>
+
+            <div class="tabs-wrapper">
+                <div class="tabs">
+                    <button
+                        class="tab-btn active"
+                        onclick="switchTab('latest')"
+                    >
+                        最新版本
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('history')">
+                        历史版本
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('tutorial')">
+                        使用教程
+                    </button>
+                </div>
+            </div>
+
+            <div id="loading"><div class="spinner"></div></div>
+
+            <div id="latest-panel" class="tab-panel active"></div>
+            <div id="history-panel" class="tab-panel"></div>
+            <div id="tutorial-panel" class="tab-panel">
+                <div class="tutorial-card">
+                    <h2>Baby Step 使用教程</h2>
+                    <p class="tutorial-lead">
+                        适用场景：笔记本用网线直连服务器的 IPMI/BMC 管理口。工具会临时接管你选择的网卡，给 BMC 分配一个地址，并打开管理页面。
+                    </p>
+                    <div class="tutorial-note">
+                        开始前确认两件事：软件需要管理员权限；网线要插到服务器的 IPMI/BMC 专用管理口，不要插到普通业务网口。退出时工具会把所选网卡恢复为 DHCP。
+                    </div>
+
+                    <section class="tutorial-step">
+                        <div>
+                            <div class="step-kicker">Step 0</div>
+                            <h3>先看说明，不要接入局域网使用</h3>
+                            <p>
+                                ezgetBMCIP 只用于直连。它会修改你选择的网卡 IP 配置，并在退出时恢复为 DHCP。
+                            </p>
+                            <ul>
+                                <li>如果这块网卡正在上网，运行期间网络会被临时切走。</li>
+                                <li>如果机器有多个有线网卡，后面要选连接 IPMI/BMC 的那一块。</li>
+                            </ul>
+                        </div>
+                        <img class="tutorial-shot" src="assets/tutorial/step-0-welcome.png" alt="欢迎页和使用注意事项" loading="lazy" />
+                    </section>
+
+                    <section class="tutorial-step">
+                        <div>
+                            <div class="step-kicker">Step 1</div>
+                            <h3>选择目标网卡</h3>
+                            <p>
+                                选择将要连接 IPMI/BMC 管理口的有线网卡。默认网段是 <code>10.77.77.1/24</code>，BMC 会拿到 <code>10.77.77.100</code>。
+                            </p>
+                            <ul>
+                                <li>多数情况下不用改网段，直接点击“开始”。</li>
+                                <li>如果必须改，只能使用私有网段：<code>10.x.x.x</code>、<code>172.16-31.x.x</code>、<code>192.168.x.x</code>。</li>
+                            </ul>
+                        </div>
+                        <img class="tutorial-shot" src="assets/tutorial/step-1-select-adapter.png" alt="选择目标网卡并开始" loading="lazy" />
+                    </section>
+
+                    <section class="tutorial-step">
+                        <div>
+                            <div class="step-kicker">Step 2</div>
+                            <h3>按提示插入网线</h3>
+                            <p>
+                                软件会先配置网卡并启动 DHCP 服务，然后等待链路 UP。此时把网线连接到服务器 IPMI/BMC 管理口。
+                            </p>
+                            <ul>
+                                <li>如果一直停在这里，优先检查网线、网口位置、服务器管理口是否通电。</li>
+                                <li>直连测试时不要让这根线同时接交换机。</li>
+                            </ul>
+                        </div>
+                        <img class="tutorial-shot" src="assets/tutorial/step-2-wait-link.png" alt="等待插入网线" loading="lazy" />
+                    </section>
+
+                    <section class="tutorial-step">
+                        <div>
+                            <div class="step-kicker">Step 3</div>
+                            <h3>链路 UP 后等待 BMC 获取地址</h3>
+                            <p>
+                                检测到链路后，工具继续等待 BMC 发出 DHCP 请求。正常情况下会在几十秒内完成，具体取决于 BMC 启动和 DHCP 重试节奏。
+                            </p>
+                        </div>
+                        <img class="tutorial-shot" src="assets/tutorial/step-3-link-up.png" alt="链路已连接" loading="lazy" />
+                    </section>
+
+                    <section class="tutorial-step">
+                        <div>
+                            <div class="step-kicker">Step 4</div>
+                            <h3>浏览器打开 BMC 页面后再操作</h3>
+                            <p>
+                                页面打开后，说明 DHCP 分配和浏览器启动都已完成。此时可以登录 BMC，按你的目标查看硬件状态、配置远程控制或执行维护操作。
+                            </p>
+                            <p class="tutorial-warning">
+                                不要在 BMC 页面打开后直接拔线退出。先完成 BMC 操作，再回到工具点击“完成 / 退出”。
+                            </p>
+                        </div>
+                        <img class="tutorial-shot" src="assets/tutorial/step-4-opened.png" alt="BMC 管理页面已打开" loading="lazy" />
+                    </section>
+
+                    <section class="tutorial-step">
+                        <div>
+                            <div class="step-kicker">Step 5</div>
+                            <h3>完成后退出，等待网卡恢复 DHCP</h3>
+                            <p>
+                                点击“完成 / 退出”后，工具会关闭内置 DHCP 服务，并把所选网卡恢复为 DHCP。恢复完成后再把网线接回交换机或原网络。
+                            </p>
+                            <ul>
+                                <li>如果恢复失败，窗口会保留错误提示，不会静默退出。</li>
+                                <li>需要排障时，点击左下角“日志”打开日志文件。</li>
+                            </ul>
+                        </div>
+                        <img class="tutorial-shot" src="assets/tutorial/step-5-cleanup.png" alt="退出并恢复 DHCP" loading="lazy" />
+                    </section>
+                </div>
+            </div>
+            <div id="error-panel" style="display: none"></div>
+
+            <footer>
+                <a
+                    href="https://github.com/FAYOO777/ezgetBMCIP"
+                    target="_blank"
+                    rel="noopener"
+                    >在 GitHub 上查看源码</a
+                >
+            </footer>
+        </div>
+
+        <script>
+            const VERSIONS_URL = "https://dl.fayoo.fun/versions.json";
+            const GITHUB_RELEASES =
+                "https://github.com/FAYOO777/ezgetBMCIP/releases";
+
+            function fmtSize(bytes) {
+                if (bytes >= 1 << 30)
+                    return (bytes / (1 << 30)).toFixed(1) + " GB";
+                if (bytes >= 1 << 20)
+                    return (bytes / (1 << 20)).toFixed(1) + " MB";
+                if (bytes >= 1 << 10)
+                    return (bytes / (1 << 10)).toFixed(1) + " KB";
+                return bytes + " B";
+            }
+
+            function assetRow(asset, large) {
+                const lowerName = asset.name.toLowerCase();
+                const isLite = lowerName.includes("lite");
+                const isLegacy = lowerName.includes("legacy");
+                // 将 size 和 notice 放在同一行的 meta 区域
+                return `<div class="${large ? "hero-asset" : "asset-row"}">
+    <div class="asset-info">
+      <div class="asset-name">${asset.name}</div>
+      <div class="asset-desc">${asset.desc}</div>
+      <div class="asset-meta">
+        <span class="asset-size">${fmtSize(asset.size)}</span>
+        ${
+            large && isLite
+                ? `<span class="runtime-notice">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            需要 <a href="https://dotnet.microsoft.com/en-us/download/dotnet/8.0">.NET Desktop Runtime 8.0</a>
+        </span>`
+                : large && isLegacy
+                  ? `<span class="runtime-notice">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            压缩包内含 <a href="https://dotnet.microsoft.com/en-us/download/dotnet-framework/net46">.NET Framework 4.6</a> 离线安装包，解压整个文件夹运行
+        </span>`
+                : ""
+        }
+      </div>
+    </div>
+    <a class="dl-btn ${large ? "" : "dl-btn-sm"}" href="${asset.url}" download>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      ${large ? "下载" : ""}
+    </a>
+  </div>`;
+            }
+
+            function render(versions) {
+                document.getElementById("loading").style.display = "none";
+                if (!Array.isArray(versions) || versions.length === 0) {
+                    showError("暂无可用版本");
+                    return;
+                }
+
+                const latestStable =
+                    versions.find((v) => !v.prerelease) || versions[0];
+
+                // ── Latest tab ──
+                const latestPanel = document.getElementById("latest-panel");
+                latestPanel.innerHTML = `
+    <div class="hero-card">
+      <div class="hero-tag">
+        <span>${latestStable.version}</span>
+        <span class="badge badge-stable">最新稳定版</span>
+      </div>
+      <div class="hero-date">发布于 ${latestStable.date}</div>
+      ${(latestStable.assets || []).map((a) => assetRow(a, true)).join("")}
+    </div>
+    <div class="intro-card">
+      <p style="font-size:14px;">这个工具用于笔记本直连服务器 IPMI/BMC 管理口的场景。它会临时配置所选网卡，启动内置 DHCP 服务，等待 BMC 获取地址后打开管理页面。</p>
+      <p style="font-size:13px;">Windows 10/11 使用 Full 或 Lite；Windows 7 SP1 / 8 / 8.1 使用 Legacy。</p>
+
+      <h3>使用提示</h3>
+      <p>运行后选择网卡 → 连接 IPMI/BMC 管理口 → 等待页面打开 → 操作完成后点击"完成 / 退出"。</p>
+      <ul>
+        <li>退出前会<strong>恢复所选网卡为 DHCP</strong>，不会恢复为原来的静态 IP 配置。</li>
+        <li>需要<strong>管理员权限</strong>，启动时自动 UAC 提权。</li>
+        <li>确保网线插在服务器的 <strong>IPMI 专用管理口</strong>，不是普通网口。</li>
+        <li>自定义网段只支持私有 IPv4：<code>10.x.x.x</code>、<code>172.16-31.x.x</code>、<code>192.168.x.x</code>。</li>
+      </ul>
+
+      <h3>功能</h3>
+      <ul>
+        <li>🖥️ 检测有线网卡，多网卡时可选</li>
+        <li>📝 退出时恢复所选网卡为 DHCP 模式</li>
+        <li>🔧 临时配置本机为 <code>10.77.77.1/255.255.255.0</code></li>
+        <li>📡 内嵌 DHCP Server（直连场景固定分配 <code>.100</code>）</li>
+        <li>🧓 Legacy 版面向 Windows 7 SP1 / 8 / 8.1</li>
+        <li>🔗 WMI/CIM 轮询网卡链路状态</li>
+        <li>🌐 获取 IPMI IP 后调用浏览器打开 BMC 页面</li>
+        <li>🧹 关闭时停止 DHCP、恢复所选网卡为 DHCP</li>
+        <li>🪜 5 步可视化进度指示，失败时明确提示</li>
+        <li>🌗 自动跟随 Windows 系统亮/暗主题</li>
+      </ul>
+
+      <h3>工作流程</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;color:var(--text-muted);">
+        <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:var(--accent);white-space:nowrap;vertical-align:top;">1. 配置本机网卡</td><td style="padding:4px 0;">设为 10.77.77.1 → 启动 DHCP</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:var(--accent);white-space:nowrap;vertical-align:top;">2. 连接网线</td><td style="padding:4px 0;">等待网线插入 IPMI 管理口，检测 Link UP</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:var(--accent);white-space:nowrap;vertical-align:top;">3. 获取 IPMI IP</td><td style="padding:4px 0;">DHCP 监听 IPMI 请求，自动获取地址</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:var(--accent);white-space:nowrap;vertical-align:top;">4. 打开 BMC</td><td style="padding:4px 0;">使用浏览器打开 <code>http://&lt;IPMI IP&gt;</code></td></tr>
+        <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:var(--accent);white-space:nowrap;vertical-align:top;">5. 清理退出</td><td style="padding:4px 0;">关闭 DHCP Server，恢复所选网卡为 DHCP</td></tr>
+      </table>
+    </div>`;
+
+                // ── History tab ──
+                const historyPanel = document.getElementById("history-panel");
+                historyPanel.innerHTML = versions
+                    .map(
+                        (v) => `
+    <div class="version-card">
+      <div class="version-header">
+        <span class="version-tag">${v.version}</span>
+        ${v.prerelease ? '<span class="badge badge-beta">Pre-release</span>' : '<span class="badge badge-stable">Stable</span>'}
+        <span class="version-date" style="margin-left: auto;">${v.date}</span>
+      </div>
+      ${(v.assets || []).map((a) => assetRow(a, false)).join("")}
+    </div>`,
+                    )
+                    .join("");
+            }
+
+            function showError(msg) {
+                document.getElementById("loading").style.display = "none";
+                document.getElementById("error-panel").style.display = "block";
+                document.getElementById("error-panel").innerHTML = `
+    <div class="error-box">
+      <p>⚠ ${msg}</p>
+      <p><a href="${GITHUB_RELEASES}">前往 GitHub Releases 手动下载</a></p>
+    </div>`;
+            }
+
+            function switchTab(name) {
+                const tabNames = ["latest", "history", "tutorial"];
+                document
+                    .querySelectorAll(".tab-btn")
+                    .forEach((b, i) =>
+                        b.classList.toggle("active", tabNames[i] === name),
+                    );
+
+                // 重新触发 CSS 动画机制
+                document.querySelectorAll(".tab-panel").forEach((p) => {
+                    p.classList.remove("active");
+                    // 强制重绘以触发动画
+                    void p.offsetWidth;
+                });
+                document
+                    .getElementById(name + "-panel")
+                    .classList.add("active");
+            }
+
+            switchTab("latest");
+
+            (async () => {
+                try {
+                    const resp = await fetch(VERSIONS_URL);
+                    if (!resp.ok)
+                        throw new Error(
+                            "无法获取版本列表（HTTP " + resp.status + "）",
+                        );
+                    render(await resp.json());
+                } catch (err) {
+                    showError(err.message);
+                }
+            })();
+        </script>
+    </body>
+</html>
