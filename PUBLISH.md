@@ -13,7 +13,7 @@
 
 ```
 publish\
-├── ezgetBMCIP-legacy-net46\     # Legacy 版输出
+├── ezgetBMCIP-legacy-net46\     # Legacy 版输出，内含 .NET Framework 4.6 离线安装包
 │   ├── ezgetBMCIP-legacy.exe
 │   ├── ezgetBMCIP-legacy.exe.config
 │   ├── ezgetBMCIP.Core.Legacy.dll
@@ -56,6 +56,7 @@ publish\
 ## Legacy 版运行时要求
 
 - 目标机器必须安装 **.NET Framework 4.6**（或更高 4.x）
+- Legacy 压缩包内置 `NDP46-KB3045557-x86-x64-AllOS-ENU.exe`，离线环境可先运行该安装包
 - 支持操作系统：Windows 7 SP1 / Windows 8 / Windows 8.1 / Windows 10 / Windows 11
 - Legacy 版不是 self-contained / single-file 发布，部署前请先确认目标机器已安装 .NET Framework
 - .NET Framework 4.6 下载：<https://dotnet.microsoft.com/en-us/download/dotnet-framework/net46>

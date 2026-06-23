@@ -61,7 +61,7 @@
 |---|---|
 | **Full** `ezgetBMCIP-full.exe` | 面向 Windows 10/11，包含 .NET 运行时，文件较大 |
 | **Lite** `ezgetBMCIP-lite.exe` | 体积小，下载快，需要系统装有 .NET Desktop Runtime 8.0 |
-| **Legacy** `ezgetBMCIP-legacy-net46.zip` | 面向 Windows 7 SP1 / Windows 8 / Windows 8.1，需要 .NET Framework 4.6，解压后运行文件夹内的 exe |
+| **Legacy** `ezgetBMCIP-legacy-net46.zip` | 面向 Windows 7 SP1 / Windows 8 / Windows 8.1，压缩包内含 .NET Framework 4.6 离线安装包，解压后运行文件夹内的 exe |
 
 ## 技术栈
 

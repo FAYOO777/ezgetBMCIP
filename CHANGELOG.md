@@ -1,5 +1,8 @@
 ## ezgetBMCIP 更新日志
 
+### v1.3.1 (2026-06-23)
+- Legacy 发布压缩包内置 `.NET Framework 4.6` 离线安装包，减少 Windows 7/8/8.1 用户额外下载步骤。
+
 ### v1.3.0 (2026-06-23)
 - 🧓 新增 Legacy 版：面向 Windows 7 SP1 / Windows 8 / Windows 8.1，基于 .NET Framework 4.6，部署时复制整个 `ezgetBMCIP-legacy-net46` 文件夹。
 - 🛠️ Legacy 适配旧系统网络栈：使用 WMI / netsh / 注册表路径替代 Win10+ PowerShell cmdlet。

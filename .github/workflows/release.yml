@@ -74,6 +74,11 @@ jobs:
       - name: Rename artifacts
         shell: pwsh
         run: |
+          $dotnet46Installer = "third_party/dotnetfx46/NDP46-KB3045557-x86-x64-AllOS-ENU.exe"
+          if (-not (Test-Path $dotnet46Installer)) {
+            throw ".NET Framework 4.6 offline installer is missing: $dotnet46Installer"
+          }
+
           $unexpectedLiteFiles = Get-ChildItem publish/lite -File | Where-Object {
             $_.Name -notin @("ezgetBMCIP.exe", "ezgetBMCIP.pdb")
           }
@@ -93,6 +98,7 @@ jobs:
           Copy-Item publish/full/ezgetBMCIP.exe publish/ezgetBMCIP-full.exe
           Copy-Item publish/lite/ezgetBMCIP.exe publish/ezgetBMCIP-lite.exe
           Remove-Item publish/ezgetBMCIP-legacy-net46/*.pdb -ErrorAction SilentlyContinue
+          Copy-Item $dotnet46Installer publish/ezgetBMCIP-legacy-net46/NDP46-KB3045557-x86-x64-AllOS-ENU.exe
           Compress-Archive -Path publish/ezgetBMCIP-legacy-net46/* -DestinationPath publish/ezgetBMCIP-legacy-net46.zip -Force
 
           $liteSize = (Get-Item publish/ezgetBMCIP-lite.exe).Length
@@ -178,7 +184,7 @@ jobs:
                 name = "ezgetBMCIP-legacy-net46.zip"
                 url = "https://$domain/$tag/ezgetBMCIP-legacy-net46.zip"
                 size = [long]$legacySize
-                desc = "兼容 Windows 7 SP1 / Windows 8 / Windows 8.1，需要 .NET Framework 4.6，解压后运行"
+                desc = "兼容 Windows 7 SP1 / Windows 8 / Windows 8.1，压缩包内含 .NET Framework 4.6 离线安装包，解压后运行"
               }
             )
           }

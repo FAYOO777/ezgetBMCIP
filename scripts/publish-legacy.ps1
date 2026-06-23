@@ -8,6 +8,8 @@ $ErrorActionPreference = "Stop"
 
 $legacyProj = "ezgetBMCIP.Legacy\ezgetBMCIP.Legacy.csproj"
 $publishDir = "publish\ezgetBMCIP-legacy-net46"
+$zipPath = "publish\ezgetBMCIP-legacy-net46.zip"
+$dotnet46Installer = "third_party\dotnetfx46\NDP46-KB3045557-x86-x64-AllOS-ENU.exe"
 
 $versionTag = git describe --tags --abbrev=0 2>$null
 if ([string]::IsNullOrWhiteSpace($versionTag)) {
@@ -31,6 +33,11 @@ if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
 # Remove debug symbols from publish output
 Remove-Item "$publishDir\*.pdb" -ErrorAction SilentlyContinue
 
+if (-not (Test-Path $dotnet46Installer)) {
+  throw ".NET Framework 4.6 offline installer is missing: $dotnet46Installer"
+}
+Copy-Item $dotnet46Installer "$publishDir\NDP46-KB3045557-x86-x64-AllOS-ENU.exe" -Force
+
 # Generate README
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = "git"
@@ -49,7 +56,8 @@ Version: $versionTag
 
 === Runtime Requirement ===
 .NET Framework 4.6 must be installed on the target machine.
-Download: https://dotnet.microsoft.com/en-us/download/dotnet-framework/net46
+If it is not installed, run NDP46-KB3045557-x86-x64-AllOS-ENU.exe from this folder first.
+Official download page: https://dotnet.microsoft.com/en-us/download/dotnet-framework/net46
 
 Windows 7 SP1 / Windows 8 / Windows 8.1 are supported.
 This is NOT a self-contained / single-file build.
@@ -60,11 +68,17 @@ $gitLog
 "@
 [System.IO.File]::WriteAllText("$publishDir\README.txt", $readme, [System.Text.UTF8Encoding]::new($false))
 
+if (Test-Path $zipPath) {
+  Remove-Item $zipPath -Force
+}
+Compress-Archive -Path "$publishDir\*" -DestinationPath $zipPath -Force
+
 Write-Host ""
 Write-Host "Done: $publishDir\" -ForegroundColor Green
 $exeSize = (Get-Item "$publishDir\ezgetBMCIP-legacy.exe").Length / 1KB
 Write-Host "Main exe size: $exeSize KB" -ForegroundColor Green
+Write-Host "Zip: $zipPath" -ForegroundColor Green
 Write-Host ""
 Write-Host "DEPLOY: Copy the entire '$publishDir' folder to the target machine." -ForegroundColor Yellow
 Write-Host "REQUIREMENT: .NET Framework 4.6 must be installed on target." -ForegroundColor Yellow
-Write-Host "Download: https://dotnet.microsoft.com/en-us/download/dotnet-framework/net46" -ForegroundColor Yellow
+Write-Host "OFFLINE INSTALLER: $publishDir\NDP46-KB3045557-x86-x64-AllOS-ENU.exe" -ForegroundColor Yellow
