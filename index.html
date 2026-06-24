@@ -666,10 +666,7 @@
                         class="tab-btn active"
                         onclick="switchTab('latest')"
                     >
-                        最新版本
-                    </button>
-                    <button class="tab-btn" onclick="switchTab('history')">
-                        历史版本
+                        立即下载
                     </button>
                     <button class="tab-btn" onclick="switchTab('tutorial')">
                         使用教程
@@ -680,7 +677,6 @@
             <div id="loading"><div class="spinner"></div></div>
 
             <div id="latest-panel" class="tab-panel active"></div>
-            <div id="history-panel" class="tab-panel"></div>
             <div id="tutorial-panel" class="tab-panel">
                 <div class="tutorial-card">
                     <h2>Baby Step 使用教程</h2>
@@ -895,21 +891,6 @@
       </table>
     </div>`;
 
-                // ── History tab ──
-                const historyPanel = document.getElementById("history-panel");
-                historyPanel.innerHTML = versions
-                    .map(
-                        (v) => `
-    <div class="version-card">
-      <div class="version-header">
-        <span class="version-tag">${v.version}</span>
-        ${v.prerelease ? '<span class="badge badge-beta">Pre-release</span>' : '<span class="badge badge-stable">Stable</span>'}
-        <span class="version-date" style="margin-left: auto;">${v.date}</span>
-      </div>
-      ${(v.assets || []).map((a) => assetRow(a, false)).join("")}
-    </div>`,
-                    )
-                    .join("");
             }
 
             function showError(msg) {
@@ -923,7 +904,7 @@
             }
 
             function switchTab(name) {
-                const tabNames = ["latest", "history", "tutorial"];
+                const tabNames = ["latest", "tutorial"];
                 document
                     .querySelectorAll(".tab-btn")
                     .forEach((b, i) =>
