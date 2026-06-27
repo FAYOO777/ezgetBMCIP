@@ -94,7 +94,7 @@ namespace EzGetBmcIp.Legacy
             {
                 MessageBox.Show(
                     "\u65e0\u6cd5\u6253\u5f00\u65e5\u5fd7\u6587\u4ef6\uff1a" + ex.Message,
-                    "ezgetBMCIP", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    "IPMI/BMC \u76f4\u8fde\u52a9\u624b", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
     }

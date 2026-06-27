@@ -39,7 +39,9 @@ if (-not (Test-Path $dotnet46Installer)) {
 Copy-Item $dotnet46Installer "$publishDir\NDP46-KB3045557-x86-x64-AllOS-ENU.exe" -Force
 
 $quickStart = @"
-ezgetBMCIP Legacy 使用教程
+IPMI/BMC 直连助手 Legacy 使用教程
+
+英文项目名：ezgetBMCIP
 
 适用系统：
 Windows 7 SP1 / Windows 8 / Windows 8.1
@@ -81,7 +83,8 @@ $gitLog = $p.StandardOutput.ReadToEnd()
 $p.WaitForExit()
 
 $readme = @"
-ezgetBMCIP Legacy (.NET Framework 4.6)
+IPMI/BMC 直连助手 Legacy (.NET Framework 4.6)
+Project: ezgetBMCIP
 Version: $versionTag
 
 === Runtime Requirement ===

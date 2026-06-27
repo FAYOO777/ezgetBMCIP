@@ -33,6 +33,12 @@ public partial class MainWindow : FluentWindow
         e.Handled = true;
     }
 
+    private void BmcUrl_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
+    {
+        Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
+        e.Handled = true;
+    }
+
     private async void OnRequestClose()
     {
         await CleanupAndShutdownAsync();
@@ -90,6 +96,24 @@ public partial class MainWindow : FluentWindow
         OpenExplorerAt(AppLogger.LogFilePath);
     }
 
+    private async void OpenDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var reportPath = await DiagnosticReporter.WriteReportAsync(_vm);
+            Process.Start(new ProcessStartInfo(reportPath)
+            {
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log("Failed to create diagnostics report: " + ex.Message);
+            System.Windows.MessageBox.Show("\u65e0\u6cd5\u751f\u6210\u8bca\u65ad\u62a5\u544a\uff1a" + ex.Message,
+                "IPMI/BMC 直连助手", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+        }
+    }
+
     private static void OpenExplorerAt(string filePath)
     {
         try
@@ -108,7 +132,7 @@ public partial class MainWindow : FluentWindow
         {
             AppLogger.Log("Failed to open explorer: " + ex.Message);
             System.Windows.MessageBox.Show("\u65e0\u6cd5\u6253\u5f00\u65e5\u5fd7\u6587\u4ef6\uff1a" + ex.Message,
-                "ezgetBMCIP", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                "IPMI/BMC 直连助手", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
         }
     }
 }

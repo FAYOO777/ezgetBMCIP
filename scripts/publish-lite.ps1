@@ -1,5 +1,5 @@
 # Publish lite (framework-dependent) version
-# Output: publish\ezgetBMCIP-lite.exe  (~2 MB)
+# Output: publish\ezgetBMCIP-lite.zip
 # Requires .NET Desktop Runtime 8 x64 on target machine.
 
 $ErrorActionPreference = "Stop"
@@ -8,6 +8,7 @@ Write-Host "Building lite version..." -ForegroundColor Cyan
 
 $publishDir = "publish\lite"
 $outputExe = "publish\ezgetBMCIP-lite.exe"
+$outputZip = "publish\ezgetBMCIP-lite.zip"
 
 $versionTag = git describe --tags --abbrev=0 2>$null
 if ([string]::IsNullOrWhiteSpace($versionTag)) {
@@ -49,10 +50,12 @@ if (-not $exeText.Contains('"frameworks"')) {
 
 # Rename for clarity
 Copy-Item "$publishDir\ezgetBMCIP.exe" $outputExe -Force
+Compress-Archive -Path $outputExe -DestinationPath $outputZip -Force
 
 Write-Host ""
-Write-Host "Done: $outputExe" -ForegroundColor Green
-Write-Host "Size: $((Get-Item $outputExe).Length / 1KB) KB" -ForegroundColor Green
+Write-Host "Done: $outputZip" -ForegroundColor Green
+Write-Host "Exe: $outputExe" -ForegroundColor Green
+Write-Host "Zip size: $((Get-Item $outputZip).Length / 1KB) KB" -ForegroundColor Green
 Write-Host ""
 Write-Host "WARNING: lite version requires .NET Desktop Runtime 8 x64 on target machine." -ForegroundColor Yellow
 Write-Host "Download: https://dotnet.microsoft.com/en-us/download/dotnet/8.0/runtime" -ForegroundColor Yellow

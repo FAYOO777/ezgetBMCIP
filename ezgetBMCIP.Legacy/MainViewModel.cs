@@ -30,7 +30,7 @@ namespace EzGetBmcIp.Legacy
         private WiredAdapter _selectedAdapterItem;
         public WiredAdapter SelectedAdapterItem { get => _selectedAdapterItem; set { _selectedAdapterItem = value; OnPropertyChanged(); } }
 
-        private string _statusText = "\u9009\u62e9\u7f51\u5361\u5e76\u5f00\u59cb";
+        private string _statusText = "IPMI/BMC \u76f4\u8fde\u52a9\u624b";
         public string StatusText { get => _statusText; set { _statusText = value; OnPropertyChanged(); } }
 
         private string _detailText = "\u9009\u62e9\u7f51\u5361\uff0c\u914d\u7f6e\u7f51\u6bb5\uff0c\u81ea\u52a8\u83b7\u53d6 BMC \u5730\u5740\u3002";

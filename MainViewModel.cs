@@ -27,7 +27,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public AppPhase AppPhase
     {
         get => _appPhase;
-        set { _appPhase = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsAdapterVisible)); OnPropertyChanged(nameof(IsIpCardVisible)); }
+        set
+        {
+            _appPhase = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsAdapterVisible));
+            OnPropertyChanged(nameof(IsIpCardVisible));
+            OnPropertyChanged(nameof(ExitButtonText));
+        }
     }
 
     public bool IsAdapterVisible => _appPhase != AppPhase.Preparation;
@@ -85,7 +92,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     //  UI bindings
     // ════════════════════════════════════════════════════════════════
 
-    private string _statusText = "欢迎使用 ezgetBMCIP";
+    private string _statusText = "欢迎使用 IPMI/BMC 直连助手";
 
     public string StatusText
     {
@@ -93,7 +100,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set { _statusText = value; OnPropertyChanged(); }
     }
 
-    private string _detailText = "直连服务器，自动分配 BMC 管理口 IP。";
+    private string _detailText = "直连服务器管理口，自动获取 BMC 地址。";
 
     public string DetailText
     {
@@ -164,16 +171,39 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string? DiscoveredIp
     {
         get => _discoveredIp;
-        set { _discoveredIp = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsIpDiscovered)); OnPropertyChanged(nameof(DiscoveredIpUrl)); }
+        set
+        {
+            _discoveredIp = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsIpDiscovered));
+            OnPropertyChanged(nameof(IsIpCardVisible));
+            OnPropertyChanged(nameof(DiscoveredIpUrl));
+            OnPropertyChanged(nameof(ExitButtonText));
+        }
     }
 
     public bool IsIpDiscovered => !string.IsNullOrEmpty(_discoveredIp);
 
     public bool IsIpCardVisible => IsIpDiscovered && _appPhase == AppPhase.FlowRunning;
 
-    public string DiscoveredIpUrl => "http://" + _discoveredIp;
+    public string DiscoveredIpUrl => string.IsNullOrWhiteSpace(_discoveredIp) ? "" : "http://" + _discoveredIp;
 
-    private string _copyButtonText = "复制 IP";
+    private bool _isAdvancedSubnetExpanded;
+
+    public bool IsAdvancedSubnetExpanded
+    {
+        get => _isAdvancedSubnetExpanded;
+        set
+        {
+            _isAdvancedSubnetExpanded = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(AdvancedSubnetToggleText));
+        }
+    }
+
+    public string AdvancedSubnetToggleText => IsAdvancedSubnetExpanded ? "收起" : "修改";
+
+    private string _copyButtonText = "复制地址";
 
     public string CopyButtonText
     {
@@ -185,6 +215,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public string VersionText => GetVersionText();
     public string GitHubUrl => "https://github.com/FAYOO777/ezgetBMCIP";
+    public string ExitButtonText => IsIpDiscovered ? "恢复网卡并退出" : "完成 / 退出";
 
     private bool _isFlowStarted;
 
@@ -218,6 +249,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICommand ExitCommand { get; }
     public ICommand CopyIpCommand { get; }
     public ICommand GoNextCommand { get; }
+    public ICommand ToggleAdvancedSubnetCommand { get; }
 
     // ════════════════════════════════════════════════════════════════
     //  Events (for window interaction)
@@ -237,6 +269,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ExitCommand = new RelayCommand(_ => RequestClose?.Invoke());
         CopyIpCommand = new RelayCommand(_ => CopyIp());
         GoNextCommand = new RelayCommand(_ => GoNext());
+        ToggleAdvancedSubnetCommand = new RelayCommand(_ => IsAdvancedSubnetExpanded = !IsAdvancedSubnetExpanded);
         _ = InitializeAsync();
     }
 
@@ -277,8 +310,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
 
         AppPhase = AppPhase.AdapterSelection;
-        StatusText = "请选择目标网卡";
-        DetailText = "选择要连接服务器 IPMI 管理口的网卡，然后点击「开始」。";
+        StatusText = "选择连接 BMC 的网卡";
+        DetailText = "选择直连服务器管理口的有线网卡，然后点击「开始」。";
     }
 
     private async Task StartFlowAsync()
@@ -302,7 +335,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         StartButtonEnabled = false;
         AppPhase = AppPhase.FlowRunning;
         DiscoveredIp = null;
-        CopyButtonText = "复制 IP";
+        CopyButtonText = "复制地址";
         AdapterCardLine1 = "✓ " + _selectedAdapter.DisplayName;
         AdapterCardLine2 = "";
         _flowCts = new CancellationTokenSource();
@@ -322,11 +355,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
             await CompleteStepAsync(3, "✅ 已自动打开 BMC 管理页面", _flowCts.Token);
 
             SetStep(4, StepState.Pending, "可以登录 BMC 后点击「完成 / 退出」恢复 DHCP。");
-            StatusText = "✅ 已自动打开 BMC 管理页面";
-            DetailText = "BMC 地址：http://" + lease.IpAddress;
+            StatusText = "BMC 页面已打开";
+            DetailText = "完成查看或登录后，点击右下角恢复网卡并退出。";
             BadgeState = StepState.Done;
             BadgeText = "✓ 已完成";
-            ActivityText = "BMC 管理页面已打开，完成后点击右下角退出。";
+            ActivityText = "BMC 管理页面已打开，完成后点击右下角恢复网卡。";
             StopEllipsis();
         }
         catch (OperationCanceledException)
@@ -339,10 +372,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         catch (Exception ex)
         {
             LogInfo("Flow failed: " + ex.Message);
-            MarkCurrentFailure(ex.Message);
+            var failureDetail = BuildFailureDetail(CurrentStepIndex, ex.Message);
+            MarkCurrentFailure(failureDetail);
             StatusText = "❌ 操作失败";
-            DetailText = ex.Message;
-            AppPhase = AppPhase.AdapterSelection;
+            DetailText = failureDetail;
             AdapterSelectionEnabled = true;
             StartButtonEnabled = true;
             BadgeState = StepState.Failed;
@@ -536,7 +569,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     // ════════════════════════════════════════════════════════════════
-    //  Copy IP
+    //  Copy BMC URL
     // ════════════════════════════════════════════════════════════════
 
     private void CopyIp()
@@ -544,14 +577,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (string.IsNullOrEmpty(_discoveredIp))
             return;
 
-        Clipboard.SetText(_discoveredIp);
+        Clipboard.SetText(DiscoveredIpUrl);
         CopyButtonText = "已复制 ✓";
 
         _copyFeedbackTimer?.Stop();
         _copyFeedbackTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         _copyFeedbackTimer.Tick += (_, _) =>
         {
-            CopyButtonText = "复制 IP";
+            CopyButtonText = "复制地址";
             _copyFeedbackTimer?.Stop();
             _copyFeedbackTimer = null;
         };
@@ -611,7 +644,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         if (state == StepState.Failed)
         {
-            return "遇到问题，请按提示检查后重试。";
+            return "遇到问题，请按提示处理；退出时会尝试恢复网卡为 DHCP。";
         }
 
         if (state == StepState.Pending)
@@ -678,6 +711,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         if (index >= 0)
             SetStep(index, StepState.Failed, "❌ " + message);
+    }
+
+    private static string BuildFailureDetail(int stepIndex, string message)
+    {
+        return stepIndex switch
+        {
+            0 => "配置本机网卡失败。请确认已用管理员权限运行，并检查安全软件是否拦截网络配置。原始错误：" + message,
+            1 => "未检测到网线连接。请确认网线直连服务器 IPMI/BMC 管理口，不是普通业务网口或交换机口。原始错误：" + message,
+            2 => "未收到 BMC 的 DHCP 请求。请确认线接在 IPMI/BMC 管理口，并确认 BMC 设置为 DHCP 获取地址。原始错误：" + message,
+            3 => "已获取 BMC 地址，但打开浏览器失败。可以复制地址后手动访问。原始错误：" + message,
+            4 => "恢复网卡为 DHCP 时失败。请再次点击「恢复网卡并退出」，或手动检查网卡 IPv4 设置。原始错误：" + message,
+            _ => message
+        };
     }
 
     // ════════════════════════════════════════════════════════════════

@@ -18,7 +18,7 @@ public partial class App : Application
         {
             AppLogger.Log("Unhandled exception: " + ex.Exception);
             MessageBox.Show("\u672a\u5904\u7406\u5f02\u5e38\uff1a" + ex.Exception,
-                "ezgetBMCIP", MessageBoxButton.OK, MessageBoxImage.Error);
+                "IPMI/BMC 直连助手", MessageBoxButton.OK, MessageBoxImage.Error);
             ex.Handled = true;
         };
 

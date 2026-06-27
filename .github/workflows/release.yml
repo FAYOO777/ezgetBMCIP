@@ -100,7 +100,9 @@ jobs:
           Remove-Item publish/ezgetBMCIP-legacy-net46/*.pdb -ErrorAction SilentlyContinue
           Copy-Item $dotnet46Installer publish/ezgetBMCIP-legacy-net46/NDP46-KB3045557-x86-x64-AllOS-ENU.exe
           $quickStart = @"
-          ezgetBMCIP Legacy 使用教程
+          IPMI/BMC 直连助手 Legacy 使用教程
+
+          英文项目名：ezgetBMCIP
 
           适用系统：
           Windows 7 SP1 / Windows 8 / Windows 8.1
@@ -135,6 +137,8 @@ jobs:
           if ($liteSize -lt 1000000) {
             throw "Lite exe is too small ($liteSize bytes). It is probably an apphost without bundled assemblies."
           }
+          Compress-Archive -Path publish/ezgetBMCIP-full.exe -DestinationPath publish/ezgetBMCIP-full.zip -Force
+          Compress-Archive -Path publish/ezgetBMCIP-lite.exe -DestinationPath publish/ezgetBMCIP-lite.zip -Force
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -142,8 +146,8 @@ jobs:
           name: ${{ github.ref_name }}
           prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
           files: |
-            publish/ezgetBMCIP-full.exe
-            publish/ezgetBMCIP-lite.exe
+            publish/ezgetBMCIP-full.zip
+            publish/ezgetBMCIP-lite.zip
             publish/ezgetBMCIP-legacy-net46.zip
           body_path: CHANGELOG.md
 
@@ -160,8 +164,8 @@ jobs:
         id: sizes
         shell: pwsh
         run: |
-          $fullSize = (Get-Item publish/ezgetBMCIP-full.exe).Length
-          $liteSize = (Get-Item publish/ezgetBMCIP-lite.exe).Length
+          $fullSize = (Get-Item publish/ezgetBMCIP-full.zip).Length
+          $liteSize = (Get-Item publish/ezgetBMCIP-lite.zip).Length
           $legacySize = (Get-Item publish/ezgetBMCIP-legacy-net46.zip).Length
           echo "full_size=$fullSize" >> $env:GITHUB_OUTPUT
           echo "lite_size=$liteSize" >> $env:GITHUB_OUTPUT
@@ -199,16 +203,16 @@ jobs:
             prerelease = $prerelease
             assets = @(
               @{
-                name = "ezgetBMCIP-full.exe"
-                url = "https://$domain/$tag/ezgetBMCIP-full.exe"
+                name = "ezgetBMCIP-full.zip"
+                url = "https://$domain/$tag/ezgetBMCIP-full.zip"
                 size = [long]$fullSize
-                desc = "完整打包，开箱即用，无需额外环境"
+                desc = "完整打包，解压后运行，无需额外环境"
               },
               @{
-                name = "ezgetBMCIP-lite.exe"
-                url = "https://$domain/$tag/ezgetBMCIP-lite.exe"
+                name = "ezgetBMCIP-lite.zip"
+                url = "https://$domain/$tag/ezgetBMCIP-lite.zip"
                 size = [long]$liteSize
-                desc = "体积小，下载快，需要系统装有 .NET Desktop Runtime 8.0"
+                desc = "体积小，解压后运行，需要系统装有 .NET Desktop Runtime 8.0"
               },
               @{
                 name = "ezgetBMCIP-legacy-net46.zip"
@@ -230,7 +234,7 @@ jobs:
           ConvertTo-Json -InputObject $list -Depth 4 | Out-File -Encoding utf8 versions.json
           Write-Host "Updated versions.json: $tag (entries: $($list.Count))"
 
-      - name: Upload exe files to R2
+      - name: Upload release zip files to R2
         shell: pwsh
         env:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
@@ -238,8 +242,8 @@ jobs:
         run: |
           $tag = "${{ github.ref_name }}"
           $endpoint = "https://$env:R2_ACCOUNT_ID.r2.cloudflarestorage.com"
-          aws s3 cp publish/ezgetBMCIP-full.exe "s3://$env:R2_BUCKET_NAME/$tag/ezgetBMCIP-full.exe" --endpoint-url $endpoint
-          aws s3 cp publish/ezgetBMCIP-lite.exe "s3://$env:R2_BUCKET_NAME/$tag/ezgetBMCIP-lite.exe" --endpoint-url $endpoint
+          aws s3 cp publish/ezgetBMCIP-full.zip "s3://$env:R2_BUCKET_NAME/$tag/ezgetBMCIP-full.zip" --endpoint-url $endpoint
+          aws s3 cp publish/ezgetBMCIP-lite.zip "s3://$env:R2_BUCKET_NAME/$tag/ezgetBMCIP-lite.zip" --endpoint-url $endpoint
           aws s3 cp publish/ezgetBMCIP-legacy-net46.zip "s3://$env:R2_BUCKET_NAME/$tag/ezgetBMCIP-legacy-net46.zip" --endpoint-url $endpoint
           Write-Host "Uploaded to R2 /$tag/"
 

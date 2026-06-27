@@ -22,5 +22,6 @@ $p = [System.Diagnostics.Process]::Start($psi)
 $output = $p.StandardOutput.ReadToEnd()
 $p.WaitForExit()
 [System.IO.File]::WriteAllText("$folder\README.txt", $output, [System.Text.UTF8Encoding]::new($false))
+Compress-Archive -Path "$folder/ezgetBMCIP-lite.exe", "$folder/README.txt" -DestinationPath "$folder/ezgetBMCIP-lite.zip" -Force
 
-Write-Host "Done: $folder/ezgetBMCIP-lite.exe" -ForegroundColor Green
+Write-Host "Done: $folder/ezgetBMCIP-lite.zip" -ForegroundColor Green

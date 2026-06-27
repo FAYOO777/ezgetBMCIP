@@ -3,8 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         xmlns:local="clr-namespace:EzGetBmcIp"
-        Title="ezgetBMCIP"
-        Width="840" Height="780" MinWidth="760" MinHeight="660"
+        Title="IPMI/BMC 直连助手"
+        Width="700" Height="660" MinWidth="700" MinHeight="580"
         WindowStartupLocation="CenterScreen"
         ExtendsContentIntoTitleBar="True"
         WindowBackdropType="Mica">
@@ -18,7 +18,7 @@
 
         <!-- ═══════════════ Title Bar ═══════════════ -->
         <ui:TitleBar Grid.Row="0"
-                     Title="ezgetBMCIP">
+                     Title="IPMI/BMC 直连助手">
             <ui:TitleBar.Icon>
                 <ui:ImageIcon Source="{StaticResource AppIconDrawing}" />
             </ui:TitleBar.Icon>
@@ -26,63 +26,64 @@
 
         <!-- ═══════════════ Content ═══════════════ -->
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <StackPanel Margin="32,24,32,24">
+            <StackPanel Margin="32,22,32,22">
 
                 <!-- ── Preparation card ── -->
-                <Grid MinHeight="560"
-                      Visibility="{Binding AppPhase, Converter={StaticResource PhaseToVis}, ConverterParameter=Preparation}">
-                    <Border Style="{StaticResource CardBorderStyle}" Padding="28,24"
-                            MaxWidth="520" HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <StackPanel>
-                        <TextBlock Text="{Binding StatusText}" FontSize="20"
-                                   FontWeight="Bold"
-                                   Foreground="{DynamicResource AccentFillColorDefaultBrush}"
-                                   HorizontalAlignment="Center"
-                                   Margin="0,0,0,4" />
-                        <TextBlock Text="{Binding DetailText}" FontSize="13"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   HorizontalAlignment="Center"
-                                   Margin="0,0,0,20" />
-
-                        <TextBlock Text="🔌 准备工作" FontSize="14" FontWeight="Bold"
-                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                   Margin="0,0,0,4" />
-                        <TextBlock Text="请确保服务器管理口和笔记本已通过网线直连。"
-                                   FontSize="13"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   Margin="0,0,0,16" TextWrapping="Wrap" />
-
-                        <TextBlock Text="⚠ 注意事项" FontSize="14" FontWeight="Bold"
-                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                   Margin="0,0,0,4" />
-                        <TextBlock FontSize="13" Margin="0,0,0,6" TextWrapping="Wrap">
-                            <Run Text="此工具仅限直连使用，" />
-                            <Run Text="无法在局域网内使用" FontWeight="Bold" />
-                            <Run Text="。" />
-                        </TextBlock>
-                        <TextBlock FontSize="13" Margin="0,0,0,20" TextWrapping="Wrap"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}">
-                            工具会临时修改选择的网卡 IP 配置，退出时自动恢复为 DHCP。
-                        </TextBlock>
-
-                        <ui:Button Content="下一步 →"
-                                   Command="{Binding GoNextCommand}"
-                                   Appearance="Primary"
-                                   HorizontalAlignment="Center"
-                                   Width="140" Height="40" />
-                    </StackPanel>
+                <StackPanel Visibility="{Binding AppPhase, Converter={StaticResource PhaseToVis}, ConverterParameter=Preparation}">
+                    <Border Style="{StaticResource CardBorderStyle}" Padding="24,18">
+                        <StackPanel>
+                            <TextBlock Text="{Binding StatusText}" FontSize="24"
+                                       FontWeight="Bold"
+                                       Foreground="{StaticResource BrandPrimaryBrush}"
+                                       Margin="0,0,0,6" />
+                            <TextBlock Text="{Binding DetailText}" FontSize="14"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
                     </Border>
-                </Grid>
+
+                    <Border Style="{StaticResource CardBorderStyle}" Padding="24,20">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" Margin="0,0,24,0">
+                                <TextBlock Text="使用前确认" FontSize="16" FontWeight="Bold"
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                           Margin="0,0,0,10" />
+                                <TextBlock FontSize="13" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           Margin="0,0,0,8"
+                                           Text="1. 笔记本有线网卡直连服务器 IPMI/BMC 管理口。" />
+                                <TextBlock FontSize="13" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           Margin="0,0,0,8"
+                                           Text="2. 此工具会临时修改所选网卡 IP，退出时恢复为 DHCP。" />
+                                <TextBlock FontSize="13" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           Text="3. 仅适用于直连场景，不适合在已有局域网内使用。" />
+                            </StackPanel>
+
+                            <ui:Button Grid.Column="1"
+                                       Content="下一步"
+                                       Command="{Binding GoNextCommand}"
+                                       Style="{StaticResource BrandPrimaryButtonStyle}"
+                                       Width="132" Height="40"
+                                       VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+                </StackPanel>
 
                 <!-- ── Hero card (AdapterSelection + FlowRunning) ── -->
                 <Border Style="{StaticResource CardBorderStyle}" Padding="24,18"
                         Visibility="{Binding IsAdapterVisible, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
-                        <TextBlock Text="{Binding StatusText}" FontSize="24"
+                        <TextBlock Text="{Binding StatusText}" FontSize="23"
                                    FontWeight="Bold"
-                                   Foreground="{DynamicResource AccentFillColorDefaultBrush}"
+                                   Foreground="{StaticResource BrandPrimaryBrush}"
                                    Margin="0,0,0,6" />
-                        <TextBlock Text="{Binding DetailText}" FontSize="14"
+                        <TextBlock Text="{Binding DetailText}" FontSize="13"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
                 </Border>
@@ -103,10 +104,16 @@
                         </Grid.ColumnDefinitions>
 
                         <!-- Header -->
-                        <TextBlock Grid.Row="0" Grid.ColumnSpan="3" Text="目标网卡"
+                        <TextBlock Grid.Row="0" Grid.ColumnSpan="3" Text="连接 BMC 的网卡"
                                    FontSize="14" FontWeight="Bold"
-                                   Foreground="{DynamicResource AccentFillColorDefaultBrush}"
-                                   Margin="0,0,0,8" />
+                                   Foreground="{StaticResource BrandPrimaryBrush}"
+                                   Margin="0,0,0,8"
+                                   Visibility="{Binding AppPhase, Converter={StaticResource PhaseToVis}, ConverterParameter=AdapterSelection}" />
+                        <TextBlock Grid.Row="0" Grid.ColumnSpan="3" Text="当前网卡"
+                                   FontSize="13" FontWeight="Bold"
+                                   Foreground="{StaticResource BrandPrimaryBrush}"
+                                   Margin="0,0,0,6"
+                                   Visibility="{Binding AppPhase, Converter={StaticResource PhaseToVis}, ConverterParameter=FlowRunning}" />
 
                         <!-- ── Default state: before flow starts ── -->
                         <TextBlock Grid.Row="1" Grid.Column="0" Text="选择网卡"
@@ -118,15 +125,22 @@
                         <ComboBox Grid.Row="1" Grid.Column="1"
                                   ItemsSource="{Binding Adapters}"
                                   SelectedItem="{Binding SelectedAdapterItem}"
-                                  DisplayMemberPath="DisplayName"
                                   IsEnabled="{Binding AdapterSelectionEnabled}"
                                   Height="38" VerticalAlignment="Center"
-                                  Visibility="{Binding AppPhase, Converter={StaticResource PhaseToVis}, ConverterParameter=AdapterSelection}" />
+                                  Visibility="{Binding AppPhase, Converter={StaticResource PhaseToVis}, ConverterParameter=AdapterSelection}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DisplayName}"
+                                               TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding DisplayName}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
 
                         <ui:Button Grid.Row="1" Grid.Column="2"
                                 Content="开始"
                                 Command="{Binding StartCommand}"
-                                Appearance="Primary"
+                                Style="{StaticResource BrandPrimaryButtonStyle}"
                                 IsEnabled="{Binding StartButtonEnabled}"
                                 Width="96" Height="38" Margin="14,0,0,0"
                                 VerticalAlignment="Center"
@@ -137,12 +151,14 @@
                                     Visibility="{Binding AppPhase, Converter={StaticResource PhaseToVis}, ConverterParameter=FlowRunning}"
                                     Orientation="Horizontal" Margin="0,4,0,0">
                             <Ellipse Width="10" Height="10"
-                                     Fill="{DynamicResource SystemFillColorSuccessBrush}"
+                                     Fill="{StaticResource BrandSuccessBrush}"
                                      VerticalAlignment="Center" Margin="0,0,10,0" />
                             <TextBlock Text="{Binding AdapterCardLine1}"
                                        FontSize="14" FontWeight="Bold"
                                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                       VerticalAlignment="Center" />
+                                       VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding AdapterCardLine1}" />
                         </StackPanel>
                     </Grid>
                 </Border>
@@ -151,12 +167,36 @@
                 <Border Style="{StaticResource CardBorderStyle}" Padding="18,14"
                         Visibility="{Binding AppPhase, Converter={StaticResource PhaseToVis}, ConverterParameter=AdapterSelection}">
                     <StackPanel>
-                        <TextBlock Text="⚙ 自定义网段（可选）" FontSize="14" FontWeight="Bold"
-                                   Foreground="{DynamicResource AccentFillColorDefaultBrush}"
-                                   Margin="0,0,0,10" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="高级设置：自定义网段" FontSize="14" FontWeight="Bold"
+                                           Foreground="{StaticResource BrandPrimaryBrush}"
+                                           Margin="0,0,0,4" />
+                                <TextBlock FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                                    <Run Text="默认会分配 BMC 地址 "/>
+                                    <Run Text="{Binding SubnetConfig.PoolDisplay, Mode=OneWay}" FontWeight="SemiBold"/>
+                                    <Run Text="，大多数直连场景无需修改。"/>
+                                </TextBlock>
+                            </StackPanel>
+
+                            <ui:Button Grid.Column="1"
+                                       Content="{Binding AdvancedSubnetToggleText}"
+                                       Command="{Binding ToggleAdvancedSubnetCommand}"
+                                       Appearance="Secondary"
+                                       Width="72" Height="32"
+                                       VerticalAlignment="Center"
+                                       Margin="18,0,0,0" />
+                        </Grid>
 
                         <!-- 4 octet input boxes -->
-                        <Grid HorizontalAlignment="Center">
+                        <Grid HorizontalAlignment="Center" Margin="0,14,0,0"
+                              Visibility="{Binding IsAdvancedSubnetExpanded, Converter={StaticResource BoolToVis}}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="56" />
                                 <ColumnDefinition Width="16" />
@@ -204,7 +244,8 @@
 
                         <!-- Info -->
                         <TextBlock HorizontalAlignment="Center" Margin="0,8,0,0" FontSize="11"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Visibility="{Binding IsAdvancedSubnetExpanded, Converter={StaticResource BoolToVis}}">
                             <Run Text="子网掩码: 255.255.255.0"/>
                             <Run Text="  ·  "/>
                             <Run Text="BMC 固定地址: "/>
@@ -212,22 +253,23 @@
                         </TextBlock>
                         <TextBlock HorizontalAlignment="Center" Margin="0,4,0,0" FontSize="11"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   Text="仅支持私有网段：10.x.x.x / 172.16-31.x.x / 192.168.x.x" />
+                                   Text="仅支持私有网段：10.x.x.x / 172.16-31.x.x / 192.168.x.x"
+                                   Visibility="{Binding IsAdvancedSubnetExpanded, Converter={StaticResource BoolToVis}}" />
                     </StackPanel>
                 </Border>
 
                 <!-- ── Current step card ── -->
-                <Border Style="{StaticResource CardBorderStyle}" Padding="32,24"
+                <Border Style="{StaticResource CardBorderStyle}" Padding="28,20"
                         Visibility="{Binding AppPhase, Converter={StaticResource PhaseToVis}, ConverterParameter=FlowRunning}">
                     <ContentControl Content="{Binding}">
                         <ContentControl.ContentTemplate>
                             <DataTemplate>
                                 <StackPanel HorizontalAlignment="Center">
                                     <!-- Icon -->
-                                    <Grid Width="56" Height="56" HorizontalAlignment="Center"
-                                          Margin="0,0,0,12">
+                                    <Grid Width="52" Height="52" HorizontalAlignment="Center"
+                                          Margin="0,0,0,10">
                                         <Ellipse x:Name="BadgeCircle"
-                                                 Width="56" Height="56"
+                                                 Width="52" Height="52"
                                                  Fill="Transparent"
                                                  Stroke="{DynamicResource ControlStrokeColorDefaultBrush}"
                                                  StrokeThickness="3" />
@@ -245,7 +287,7 @@
 
                                     <TextBlock x:Name="BadgeTitle"
                                                Text="{Binding CurrentStep.Title}"
-                                               FontSize="20" FontWeight="Bold"
+                                               FontSize="19" FontWeight="Bold"
                                                HorizontalAlignment="Center" Margin="0,0,0,8"
                                                Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
 
@@ -278,41 +320,41 @@
                                     <DataTrigger Binding="{Binding BadgeState}"
                                                  Value="{x:Static local:StepState.Done}">
                                         <Setter TargetName="BadgeCircle" Property="Fill"
-                                                Value="{StaticResource SystemFillColorSuccessBrush}" />
+                                                Value="{StaticResource BrandSuccessBrush}" />
                                         <Setter TargetName="BadgeCircle" Property="Stroke"
                                                 Value="Transparent" />
                                         <Setter TargetName="BadgeCheck" Property="Visibility"
                                                 Value="Visible" />
                                         <Setter TargetName="BadgeTitle" Property="Foreground"
-                                                Value="{StaticResource SystemFillColorSuccessBrush}" />
+                                                Value="{StaticResource BrandSuccessBrush}" />
                                         <Setter TargetName="BadgeBorder" Property="Background"
-                                                Value="{StaticResource SystemFillColorSuccessBrush}" />
+                                                Value="{StaticResource BrandSuccessBrush}" />
                                         <Setter TargetName="BadgeTextBlock" Property="Foreground"
                                                 Value="White" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding BadgeState}"
                                                  Value="{x:Static local:StepState.Active}">
                                         <Setter TargetName="BadgeCircle" Property="Fill"
-                                                Value="{StaticResource AccentFillColorDefaultBrush}" />
+                                                Value="{StaticResource BrandPrimaryBrush}" />
                                         <Setter TargetName="BadgeCircle" Property="Stroke"
                                                 Value="Transparent" />
                                         <Setter TargetName="BadgeBorder" Property="Background"
-                                                Value="{StaticResource AccentFillColorDefaultBrush}" />
+                                                Value="{StaticResource BrandPrimaryBrush}" />
                                         <Setter TargetName="BadgeTextBlock" Property="Foreground"
                                                 Value="White" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding BadgeState}"
                                                  Value="{x:Static local:StepState.Failed}">
                                         <Setter TargetName="BadgeCircle" Property="Fill"
-                                                Value="{StaticResource SystemFillColorCriticalBrush}" />
+                                                Value="{StaticResource BrandCriticalBrush}" />
                                         <Setter TargetName="BadgeCircle" Property="Stroke"
                                                 Value="Transparent" />
                                         <Setter TargetName="BadgeCross" Property="Visibility"
                                                 Value="Visible" />
                                         <Setter TargetName="BadgeTitle" Property="Foreground"
-                                                Value="{StaticResource SystemFillColorCriticalBrush}" />
+                                                Value="{StaticResource BrandCriticalBrush}" />
                                         <Setter TargetName="BadgeBorder" Property="Background"
-                                                Value="{StaticResource SystemFillColorCriticalBrush}" />
+                                                Value="{StaticResource BrandCriticalBrush}" />
                                         <Setter TargetName="BadgeTextBlock" Property="Foreground"
                                                 Value="White" />
                                     </DataTrigger>
@@ -326,27 +368,40 @@
                 <Border Style="{StaticResource CardBorderStyle}" Padding="28,20"
                         Visibility="{Binding IsIpCardVisible, Converter={StaticResource BoolToVis}}">
                     <StackPanel HorizontalAlignment="Center">
-                        <TextBlock Text="🎯 已获取 BMC 地址" FontSize="14" FontWeight="Bold"
-                                   Foreground="{DynamicResource SystemFillColorSuccessBrush}"
-                                   HorizontalAlignment="Center" Margin="0,0,0,12" />
+                        <TextBlock Text="已获取 BMC 管理地址" FontSize="15" FontWeight="Bold"
+                                   Foreground="{StaticResource BrandSuccessBrush}"
+                                   HorizontalAlignment="Center" Margin="0,0,0,10" />
 
                         <!-- Large IP -->
-                        <TextBlock Text="{Binding DiscoveredIp}"
-                                   FontSize="32" FontWeight="Bold"
-                                   Foreground="{DynamicResource AccentFillColorDefaultBrush}"
+                        <TextBlock FontSize="28" FontWeight="Bold"
                                    HorizontalAlignment="Center"
                                    FontFamily="Consolas, Courier New"
-                                   Margin="0,0,0,8" />
+                                   Margin="0,0,0,6"
+                                   MaxWidth="560"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding DiscoveredIpUrl}">
+                            <Hyperlink NavigateUri="{Binding DiscoveredIpUrl, Mode=OneWay}"
+                                       RequestNavigate="BmcUrl_RequestNavigate"
+                                       Foreground="{StaticResource BrandPrimaryBrush}">
+                                <Run Text="{Binding DiscoveredIpUrl, Mode=OneWay}" />
+                            </Hyperlink>
+                        </TextBlock>
+
+                        <TextBlock Text="点击地址可重新打开；也可以复制后手动访问。"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,0,0,14" />
 
                         <!-- Copy + Open buttons -->
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                             <ui:Button Content="{Binding CopyButtonText}"
                                        Command="{Binding CopyIpCommand}"
                                        Appearance="Secondary"
-                                       Width="100" Height="36" Margin="0,0,10,0" />
+                                       Width="112" Height="36" Margin="0,0,10,0" />
                             <ui:Button Content="打开 BMC →"
-                                       Appearance="Success"
-                                       Width="110" Height="36"
+                                       Style="{StaticResource BrandPrimaryButtonStyle}"
+                                       Width="118" Height="36"
                                        Click="OpenBmcButton_Click" />
                         </StackPanel>
                     </StackPanel>
@@ -430,7 +485,7 @@
                                                  Value="{x:Static local:StepState.Done}">
                                         <Setter TargetName="StepCircle"
                                                 Property="Fill"
-                                                Value="{StaticResource SystemFillColorSuccessBrush}" />
+                                                Value="{StaticResource BrandSuccessBrush}" />
                                         <Setter TargetName="StepCircle"
                                                 Property="Stroke"
                                                 Value="Transparent" />
@@ -439,14 +494,14 @@
                                                 Value="Visible" />
                                         <Setter TargetName="RightLine"
                                                 Property="Fill"
-                                                Value="{StaticResource SystemFillColorSuccessBrush}" />
+                                                Value="{StaticResource BrandSuccessBrush}" />
                                     </DataTrigger>
                                     <!-- Active -->
                                     <DataTrigger Binding="{Binding State}"
                                                  Value="{x:Static local:StepState.Active}">
                                         <Setter TargetName="StepCircle"
                                                 Property="Fill"
-                                                Value="{StaticResource AccentFillColorDefaultBrush}" />
+                                                Value="{StaticResource BrandPrimaryBrush}" />
                                         <Setter TargetName="StepCircle"
                                                 Property="Stroke"
                                                 Value="Transparent" />
@@ -456,7 +511,7 @@
                                                  Value="{x:Static local:StepState.Failed}">
                                         <Setter TargetName="StepCircle"
                                                 Property="Fill"
-                                                Value="{StaticResource SystemFillColorCriticalBrush}" />
+                                                Value="{StaticResource BrandCriticalBrush}" />
                                         <Setter TargetName="StepCircle"
                                                 Property="Stroke"
                                                 Value="Transparent" />
@@ -470,7 +525,7 @@
                                                  Value="{x:Static local:StepState.Done}">
                                         <Setter TargetName="LeftLine"
                                                 Property="Fill"
-                                                Value="{StaticResource SystemFillColorSuccessBrush}" />
+                                                Value="{StaticResource BrandSuccessBrush}" />
                                     </DataTrigger>
                                 </DataTemplate.Triggers>
                             </DataTemplate>
@@ -500,9 +555,20 @@
                     <TextBlock FontSize="11" VerticalAlignment="Center"
                                 Cursor="Hand">
                         <Hyperlink Click="OpenLog_Click"
-                                    Foreground="{DynamicResource AccentFillColorDefaultBrush}"
+                                    Foreground="{StaticResource BrandPrimaryBrush}"
                                     TextDecorations="None">
                             日志
+                        </Hyperlink>
+                    </TextBlock>
+                    <TextBlock Text=" · " FontSize="11"
+                                Foreground="{DynamicResource CardStrokeColorDefaultBrush}"
+                                VerticalAlignment="Center" />
+                    <TextBlock FontSize="11" VerticalAlignment="Center"
+                                Cursor="Hand">
+                        <Hyperlink Click="OpenDiagnostics_Click"
+                                    Foreground="{StaticResource BrandPrimaryBrush}"
+                                    TextDecorations="None">
+                            诊断
                         </Hyperlink>
                     </TextBlock>
                     <TextBlock Text=" · " FontSize="11"
@@ -512,13 +578,13 @@
                                Cursor="Hand">
                         <Hyperlink NavigateUri="{Binding GitHubUrl}"
                                    RequestNavigate="GitHubLink_RequestNavigate"
-                                   Foreground="{DynamicResource AccentFillColorDefaultBrush}"
+                                   Foreground="{StaticResource BrandPrimaryBrush}"
                                    TextDecorations="None">
                             GitHub
                         </Hyperlink>
                     </TextBlock>
                 </StackPanel>
-                <ui:Button Content="完成 / 退出"
+                <ui:Button Content="{Binding ExitButtonText}"
                         Command="{Binding ExitCommand}"
                         IsEnabled="{Binding ExitButtonEnabled}"
                         Appearance="Secondary"

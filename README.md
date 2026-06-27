@@ -1,8 +1,10 @@
-# ezgetBMCIP
+# IPMI/BMC 直连助手
 
 <p align="center">
   <img src="ezgetBMCIP.svg" width="120" alt="logo"/>
 </p>
+
+ezgetBMCIP
 
 用于笔记本直连服务器 IPMI/BMC 管理口时，临时给本机网卡配置地址，启动内置 DHCP 服务，等待 BMC 获取地址后打开管理页面。
 
@@ -59,8 +61,8 @@
 
 | 版本 | 说明 |
 |---|---|
-| **Full** `ezgetBMCIP-full.exe` | 面向 Windows 10/11，包含 .NET 运行时，文件较大 |
-| **Lite** `ezgetBMCIP-lite.exe` | 体积小，下载快，需要系统装有 .NET Desktop Runtime 8.0 |
+| **Full** `ezgetBMCIP-full.zip` | 面向 Windows 10/11，包含 .NET 运行时，解压后运行，文件较大 |
+| **Lite** `ezgetBMCIP-lite.zip` | 体积小，下载快，解压后运行，需要系统装有 .NET Desktop Runtime 8.0 |
 | **Legacy** `ezgetBMCIP-legacy-net46.zip` | 面向 Windows 7 SP1 / Windows 8 / Windows 8.1，压缩包内含 .NET Framework 4.6 离线安装包，解压后运行文件夹内的 exe |
 
 ## 技术栈

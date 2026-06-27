@@ -51,6 +51,15 @@
             <local:BoolToVisibilityInvertedConverter x:Key="BoolToVisInv" />
             <local:AppPhaseToVisibilityConverter x:Key="PhaseToVis" />
 
+            <!-- ═══ Brand colors: stable across Windows accent themes ═══ -->
+            <SolidColorBrush x:Key="BrandPrimaryBrush" Color="#007ACC" />
+            <SolidColorBrush x:Key="BrandPrimaryHoverBrush" Color="#1688D8" />
+            <SolidColorBrush x:Key="BrandPrimaryPressedBrush" Color="#006BB3" />
+            <SolidColorBrush x:Key="BrandPrimaryDisabledBrush" Color="#6D93AD" />
+            <SolidColorBrush x:Key="BrandSuccessBrush" Color="#3B8F5A" />
+            <SolidColorBrush x:Key="BrandCriticalBrush" Color="#B94A48" />
+            <SolidColorBrush x:Key="BrandMutedTextBrush" Color="#9AA7B8" />
+
             <!-- ═══ Subnet octet TextBox style ═══ -->
             <Style x:Key="SubnetOctetTextBoxStyle" TargetType="TextBox">
                 <Setter Property="Background" Value="{DynamicResource ControlFillColorDefaultBrush}" />
@@ -59,6 +68,48 @@
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="Padding" Value="4,0" />
                 <Setter Property="CaretBrush" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+            </Style>
+
+            <!-- ═══ Brand primary button: independent from Windows accent color ═══ -->
+            <Style x:Key="BrandPrimaryButtonStyle" TargetType="{x:Type ui:Button}">
+                <Setter Property="Background" Value="{StaticResource BrandPrimaryBrush}" />
+                <Setter Property="BorderBrush" Value="{StaticResource BrandPrimaryBrush}" />
+                <Setter Property="Foreground" Value="White" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Padding" Value="16,0" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="{x:Type ui:Button}">
+                            <Border x:Name="Root"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="5">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"
+                                                  RecognizesAccessKey="True" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Root" Property="Background" Value="{StaticResource BrandPrimaryHoverBrush}" />
+                                    <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource BrandPrimaryHoverBrush}" />
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Root" Property="Background" Value="{StaticResource BrandPrimaryPressedBrush}" />
+                                    <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource BrandPrimaryPressedBrush}" />
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="Root" Property="Background" Value="{StaticResource BrandPrimaryDisabledBrush}" />
+                                    <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource BrandPrimaryDisabledBrush}" />
+                                    <Setter Property="Foreground" Value="#D8DEE8" />
+                                    <Setter Property="Cursor" Value="Arrow" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
 
             <!-- ═══ Card style (uses WPF-UI theme brushes) ═══ -->

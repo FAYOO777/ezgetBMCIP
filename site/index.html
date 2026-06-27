@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>ezgetBMCIP - 下载</title>
+        <title>IPMI/BMC 直连助手 - 下载</title>
         <link rel="icon" type="image/svg+xml" href="/favicon/favicon.svg" />
         <link
             rel="icon"
@@ -337,6 +337,21 @@
                 padding: 32px;
                 border: 1px solid var(--border);
                 box-shadow: var(--shadow-lg);
+                position: relative;
+                overflow: hidden;
+            }
+            .tutorial-card::before {
+                content: "";
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 4px;
+                background: linear-gradient(
+                    90deg,
+                    var(--accent),
+                    var(--success)
+                );
             }
             .tutorial-lead {
                 color: var(--text-muted);
@@ -655,8 +670,8 @@
                         opacity=".42"
                     />
                 </svg>
-                <h1>ezgetBMCIP</h1>
-                <p>直连 IPMI/BMC 管理口时临时提供 DHCP 地址</p>
+                <h1>IPMI/BMC 直连助手</h1>
+                <p>ezgetBMCIP：直连服务器管理口，自动获取 BMC 地址</p>
                 <span class="compat-badge">Windows 7 SP1+ / 8 / 8.1 / 10 / 11</span>
             </header>
 
@@ -692,7 +707,7 @@
                             <div class="step-kicker">Step 0</div>
                             <h3>先看说明，不要接入局域网使用</h3>
                             <p>
-                                ezgetBMCIP 只用于直连。它会修改你选择的网卡 IP 配置，并在退出时恢复为 DHCP。
+                                IPMI/BMC 直连助手只用于直连。它会修改你选择的网卡 IP 配置，并在退出时恢复为 DHCP。
                             </p>
                             <ul>
                                 <li>如果这块网卡正在上网，运行期间网络会被临时切走。</li>
@@ -833,6 +848,12 @@
   </div>`;
             }
 
+            function downloadableAssets(version) {
+                return (version.assets || []).filter((asset) =>
+                    asset.name.toLowerCase().endsWith(".zip"),
+                );
+            }
+
             function render(versions) {
                 document.getElementById("loading").style.display = "none";
                 if (!Array.isArray(versions) || versions.length === 0) {
@@ -852,11 +873,11 @@
         <span class="badge badge-stable">最新稳定版</span>
       </div>
       <div class="hero-date">发布于 ${latestStable.date}</div>
-      ${(latestStable.assets || []).map((a) => assetRow(a, true)).join("")}
+      ${downloadableAssets(latestStable).map((a) => assetRow(a, true)).join("")}
     </div>
     <div class="intro-card">
       <p style="font-size:14px;">这个工具用于笔记本直连服务器 IPMI/BMC 管理口的场景。它会临时配置所选网卡，启动内置 DHCP 服务，等待 BMC 获取地址后打开管理页面。</p>
-      <p style="font-size:13px;">Windows 10/11 使用 Full 或 Lite；Windows 7 SP1 / 8 / 8.1 使用 Legacy。</p>
+      <p style="font-size:13px;">所有版本均以 zip 提供，下载后先解压再运行。Windows 10/11 使用 Full 或 Lite；Windows 7 SP1 / 8 / 8.1 使用 Legacy。</p>
 
       <h3>使用提示</h3>
       <p>运行后选择网卡 → 连接 IPMI/BMC 管理口 → 等待页面打开 → 操作完成后点击"完成 / 退出"。</p>

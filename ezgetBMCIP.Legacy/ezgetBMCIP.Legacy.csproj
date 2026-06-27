@@ -7,7 +7,11 @@
     <RootNamespace>EzGetBmcIp.Legacy</RootNamespace>
     <AssemblyName>ezgetBMCIP-legacy</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\ezgetBMCIP.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="..\ezgetBMCIP.ico" Link="ezgetBMCIP.ico" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ezgetBMCIP.Core.Legacy\ezgetBMCIP.Core.Legacy.csproj" />
   </ItemGroup>
