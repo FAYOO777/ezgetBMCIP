@@ -1,3 +1,7 @@
 name = "ezgetbmcip"
 compatibility_date = "2026-06-23"
 pages_build_output_dir = "site"
+
+[[kv_namespaces]]
+binding = "DOWNLOAD_STATS"
+id = "d49c8e8b01b6419a8e4451e95567066b"
