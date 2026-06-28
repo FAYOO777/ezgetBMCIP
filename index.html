@@ -850,7 +850,7 @@
 
             function downloadableAssets(version) {
                 return (version.assets || []).filter((asset) =>
-                    /\.(exe|zip)$/i.test(asset.name),
+                    asset.name.toLowerCase().endsWith(".zip"),
                 );
             }
 

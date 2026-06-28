@@ -1,5 +1,5 @@
 # Publish full (self-contained) version
-# Output: publish\ezgetBMCIP-full.exe  (~65 MB)
+# Output: publish\ezgetBMCIP-full.zip  (~65 MB)
 # No .NET runtime required on target machine.
 
 $ErrorActionPreference = "Stop"
@@ -24,8 +24,12 @@ dotnet publish -c Release -r win-x64 `
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
 
 # Rename for clarity
-Copy-Item publish\full\ezgetBMCIP.exe publish\ezgetBMCIP-full.exe -Force
+$outputExe = "publish\ezgetBMCIP-full.exe"
+$outputZip = "publish\ezgetBMCIP-full.zip"
+Copy-Item publish\full\ezgetBMCIP.exe $outputExe -Force
+Compress-Archive -Path $outputExe -DestinationPath $outputZip -Force
 
 Write-Host ""
-Write-Host "Done: publish\ezgetBMCIP-full.exe" -ForegroundColor Green
-Write-Host "Size: $((Get-Item publish\ezgetBMCIP-full.exe).Length / 1MB) MB" -ForegroundColor Green
+Write-Host "Done: $outputZip" -ForegroundColor Green
+Write-Host "Exe: $outputExe" -ForegroundColor Green
+Write-Host "Zip size: $((Get-Item $outputZip).Length / 1MB) MB" -ForegroundColor Green
