@@ -11,3 +11,11 @@ All network activity is limited to:
 - Opening the IPMI/BMC web interface in the user's default browser
 
 No user data of any kind is collected or transferred.
+
+## Website download page
+
+The download page may record anonymous package download counts so it can show
+how many times each release package has been downloaded.
+
+The counter is grouped only by release version and file name. It does not store
+names, accounts, precise locations, or any other personal identity information.
