@@ -139,14 +139,27 @@ namespace EzGetBmcIp
     public sealed class AdapterOriginalConfig
     {
         public bool DhcpEnabled { get; set; }
+        public bool DnsServersFromDhcp { get; set; }
         public List<(IPAddress Address, IPAddress Mask)> StaticAddresses { get; } = new List<(IPAddress, IPAddress)>();
         public List<IPAddress> Gateways { get; } = new List<IPAddress>();
+        public List<int> GatewayMetrics { get; } = new List<int>();
         public List<IPAddress> DnsServers { get; } = new List<IPAddress>();
 
         public static AdapterOriginalConfig CreateDhcp()
         {
-            return new AdapterOriginalConfig { DhcpEnabled = true };
+            return new AdapterOriginalConfig { DhcpEnabled = true, DnsServersFromDhcp = true };
         }
+    }
+
+    public sealed class NetworkConfigVerification
+    {
+        public bool IsSuccess { get; set; }
+        public bool ModeMatches { get; set; }
+        public bool AddressesMatch { get; set; }
+        public bool GatewaysMatch { get; set; }
+        public bool DnsMatches { get; set; }
+        public bool ToolAddressesRemoved { get; set; }
+        public string Details { get; set; } = string.Empty;
     }
 
     public sealed class DhcpLease

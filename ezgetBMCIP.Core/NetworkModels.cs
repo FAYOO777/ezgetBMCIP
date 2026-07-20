@@ -94,14 +94,27 @@ public sealed record WiredAdapter(
 public sealed class AdapterOriginalConfig
 {
     public bool DhcpEnabled { get; init; }
+    public bool DnsServersFromDhcp { get; init; }
     public List<(IPAddress Address, IPAddress Mask)> StaticAddresses { get; } = new();
     public List<IPAddress> Gateways { get; } = new();
+    public List<int> GatewayMetrics { get; } = new();
     public List<IPAddress> DnsServers { get; } = new();
 
     public static AdapterOriginalConfig CreateDhcp()
     {
-        return new AdapterOriginalConfig { DhcpEnabled = true };
+        return new AdapterOriginalConfig { DhcpEnabled = true, DnsServersFromDhcp = true };
     }
+}
+
+public sealed class NetworkConfigVerification
+{
+    public bool IsSuccess { get; init; }
+    public bool ModeMatches { get; init; }
+    public bool AddressesMatch { get; init; }
+    public bool GatewaysMatch { get; init; }
+    public bool DnsMatches { get; init; }
+    public bool ToolAddressesRemoved { get; init; }
+    public string Details { get; init; } = string.Empty;
 }
 
 public sealed class DhcpLease

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
+using System.Net;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,10 +18,12 @@ namespace EzGetBmcIp.Legacy
         private CancellationTokenSource _flowCts;
         private WiredAdapter _selectedAdapter;
         private AdapterOriginalConfig _originalConfig;
+        private NetworkRecoverySnapshot _recoverySnapshot;
         private bool _isCleaningUp;
         private string _dhcpServerError;
 
         private Task _flowTask = Task.CompletedTask;
+        private Task _endpointProbeTask = Task.CompletedTask;
         private bool _isClosing;
 
         private bool _isFlowStarted;
@@ -53,7 +57,47 @@ namespace EzGetBmcIp.Legacy
 
         private bool _isCleanupDone;
         private string _discoveredIp;
-        public string DiscoveredIp { get => _discoveredIp; set { _discoveredIp = value; OnPropertyChanged(); OnPropertyChanged(nameof(ShowIpResult)); } }
+        public string DiscoveredIp
+        {
+            get => _discoveredIp;
+            set
+            {
+                _discoveredIp = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(ShowIpResult));
+                OnPropertyChanged(nameof(DiscoveredIpUrl));
+            }
+        }
+
+        private string _preferredBmcScheme = "https";
+        public string PreferredBmcScheme
+        {
+            get => _preferredBmcScheme;
+            private set
+            {
+                _preferredBmcScheme = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(DiscoveredIpUrl));
+            }
+        }
+
+        private string _endpointStatusText = "等待 BMC 管理页面响应。";
+        public string EndpointStatusText
+        {
+            get => _endpointStatusText;
+            set { _endpointStatusText = value; OnPropertyChanged(); }
+        }
+
+        private bool _isEndpointProbeRunning;
+        public bool IsEndpointProbeRunning
+        {
+            get => _isEndpointProbeRunning;
+            private set { _isEndpointProbeRunning = value; OnPropertyChanged(); }
+        }
+
+        public string DiscoveredIpUrl => string.IsNullOrEmpty(_discoveredIp)
+            ? ""
+            : PreferredBmcScheme + "://" + _discoveredIp;
 
         public bool ShowAdapterSelection => !_isFlowStarted;
         public bool ShowRunning => _isFlowStarted && !_isCleanupDone;
@@ -64,6 +108,9 @@ namespace EzGetBmcIp.Legacy
         public ICommand StartCommand { get; }
         public ICommand ExitCommand { get; }
         public ICommand CancelCommand { get; }
+        public ICommand RetryEndpointCommand { get; }
+        public ICommand OpenHttpsCommand { get; }
+        public ICommand OpenHttpCommand { get; }
 
         public event Action RequestClose;
         public event Action<string> OpenBrowserRequested;
@@ -73,6 +120,13 @@ namespace EzGetBmcIp.Legacy
             StartCommand = new RelayCommand(async _ => await StartFlowAsync());
             ExitCommand = new RelayCommand(_ => RequestClose?.Invoke());
             CancelCommand = new RelayCommand(_ => CancelFlow());
+            RetryEndpointCommand = new RelayCommand(async _ =>
+            {
+                _endpointProbeTask = RetryEndpointProbeAsync();
+                await _endpointProbeTask;
+            });
+            OpenHttpsCommand = new RelayCommand(_ => OpenBrowserForScheme("https"));
+            OpenHttpCommand = new RelayCommand(_ => OpenBrowserForScheme("http"));
             var _ = InitializeAsync();
         }
 
@@ -88,6 +142,7 @@ namespace EzGetBmcIp.Legacy
                 Log("Adapter enumeration started");
                 var adapters = await Task.Run(() => NetworkConfigManager.GetWiredAdapters());
                 Log("Adapter enumeration done: " + adapters.Count + " adapter(s) found");
+                await RecoverPendingNetworkConfigurationAsync(adapters);
                 if (adapters.Count == 0)
                     throw new InvalidOperationException("\u672a\u68c0\u6d4b\u5230\u53ef\u7528\u7f51\u5361");
                 foreach (var a in adapters)
@@ -104,6 +159,48 @@ namespace EzGetBmcIp.Legacy
                 Log("Initialize failed: " + ex.Message);
                 DetailText = ex.Message;
                 StartButtonEnabled = false;
+            }
+        }
+
+        private async Task RecoverPendingNetworkConfigurationAsync(System.Collections.Generic.IReadOnlyList<WiredAdapter> adapters)
+        {
+            NetworkRecoverySnapshot snapshot;
+            string loadError;
+            if (!NetworkRecoveryStore.TryLoad(out snapshot, out loadError))
+            {
+                if (!string.IsNullOrWhiteSpace(loadError))
+                {
+                    throw new InvalidOperationException(
+                        "检测到损坏的网卡恢复记录。为避免覆盖原设置，已停止新的操作。恢复记录：" +
+                        NetworkRecoveryStore.RecoveryFilePath + "；错误：" + loadError);
+                }
+                return;
+            }
+
+            var adapter = adapters.FirstOrDefault(snapshot.MatchesAdapter) ?? snapshot.ToAdapter();
+            StatusText = "正在恢复上次未完成的网卡配置...";
+            DetailText = "检测到程序上次未正常结束，正在恢复网卡「" + snapshot.AdapterName + "」。";
+            Log("Pending recovery found: session=" + snapshot.SessionId + " adapter=" + snapshot.AdapterName);
+            try
+            {
+                using (var recoveryCts = new CancellationTokenSource(TimeSpan.FromSeconds(70)))
+                {
+                    await NetworkConfigManager.RestoreOriginalConfigAsync(
+                        adapter, snapshot.ToOriginalConfig(), snapshot.ToSubnetConfig(), recoveryCts.Token);
+                }
+                NetworkRecoveryStore.DeleteIfSessionMatches(snapshot.SessionId);
+                StatusText = "上次网卡配置已恢复";
+                DetailText = "异常退出留下的网络配置已经处理，可以继续使用。";
+                Log("Pending recovery completed: session=" + snapshot.SessionId);
+            }
+            catch (Exception ex)
+            {
+                StatusText = "上次网卡配置恢复失败";
+                DetailText = "请重新连接网卡「" + snapshot.AdapterName + "」后重启程序。恢复记录会继续保留。";
+                throw new InvalidOperationException(
+                    "检测到上次未完成的网卡配置，但自动恢复失败。请重新连接原网卡「" +
+                    snapshot.AdapterName + "」后重试。原始错误：" + ex.Message,
+                    ex);
             }
         }
 
@@ -129,6 +226,9 @@ namespace EzGetBmcIp.Legacy
             OnPropertyChanged(nameof(AdapterCardLine));
             _flowCts = new CancellationTokenSource();
             _dhcpServerError = null;
+            DiscoveredIp = null;
+            PreferredBmcScheme = "https";
+            EndpointStatusText = "等待 BMC 管理页面响应。";
             _flowTask = RunFlowAsync(_flowCts.Token);
             return Task.CompletedTask;
         }
@@ -141,15 +241,9 @@ namespace EzGetBmcIp.Legacy
                 await ConfigureAdapterAsync(ct);
                 await WaitForLinkAsync(ct);
                 var lease = await WaitForLeaseAsync(ct);
-                _discoveredIp = lease.IpAddress.ToString();
+                DiscoveredIp = lease.IpAddress.ToString();
                 Log("Flow success, BMC IP: " + _discoveredIp);
-                OnPropertyChanged(nameof(DiscoveredIp));
-                StatusText = "BMC \u7ba1\u7406\u9875\u9762\u5df2\u6253\u5f00";
-                DetailText = "\u5730\u5740: http://" + lease.IpAddress;
-                BadgeText = "\u5df2\u5b8c\u6210";
-                BadgeColor = "#107C10";
-                ActivityText = "BMC \u7ba1\u7406\u9875\u9762\u5df2\u6253\u5f00\uff0c\u5b8c\u6210\u540e\u70b9\u51fb\u9000\u51fa\u3002";
-                OpenBrowserRequested?.Invoke(lease.IpAddress.ToString());
+                await ProbeBmcEndpointAsync(lease.IpAddress, true, ct);
             }
             catch (OperationCanceledException)
             {
@@ -184,16 +278,21 @@ namespace EzGetBmcIp.Legacy
             BadgeColor = "#0078D4";
 
             _originalConfig = NetworkConfigManager.CaptureOriginalConfig(_selectedAdapter);
-            Log("Config: dhcpEnabled=" + _originalConfig.DhcpEnabled + ", addr=" + _subnetConfig.ServerDisplay);
+            Log("Config: dhcpEnabled=" + _originalConfig.DhcpEnabled +
+                ", dnsFromDhcp=" + _originalConfig.DnsServersFromDhcp +
+                ", gatewayMetrics=" + _originalConfig.GatewayMetrics.Count +
+                ", addr=" + _subnetConfig.ServerDisplay);
+            _recoverySnapshot = NetworkRecoveryStore.Save(_selectedAdapter, _originalConfig, _subnetConfig);
+            Log("Recovery snapshot saved: session=" + _recoverySnapshot.SessionId);
+            NetworkRecoveryStore.StartWatchdog(_recoverySnapshot, Log);
             if (!_originalConfig.DhcpEnabled)
             {
                 await NetworkConfigManager.ForceDhcpBestEffortAsync(_selectedAdapter, _subnetConfig, ct, releaseToolLease: false);
                 await Task.Delay(1200, ct);
-                _originalConfig = AdapterOriginalConfig.CreateDhcp();
             }
 
             await NetworkConfigManager.SetStaticForToolAsync(_selectedAdapter, _subnetConfig, ct);
-            _dhcpServer = new DhcpServer(_subnetConfig);
+            _dhcpServer = new DhcpServer(_subnetConfig, _selectedAdapter);
             _dhcpServer.Logger = msg => Log("[DHCP] " + msg);
             _dhcpServer.ErrorEncountered += OnDhcpServerError;
             _dhcpServer.Start();
@@ -240,6 +339,12 @@ namespace EzGetBmcIp.Legacy
             void ErrorHandler(object s, string msg) => tcs.TrySetException(new InvalidOperationException(msg));
             if (_dhcpServer != null) _dhcpServer.LeaseAssigned += Handler;
             if (_dhcpServer != null) _dhcpServer.ErrorEncountered += ErrorHandler;
+            if (_dhcpServer != null && _dhcpServer.LastAssignedLease != null)
+            {
+                Log("DHCP lease was assigned before lease wait started; using cached lease: " +
+                    _dhcpServer.LastAssignedLease.IpAddress);
+                tcs.TrySetResult(_dhcpServer.LastAssignedLease);
+            }
 
             try
             {
@@ -251,7 +356,7 @@ namespace EzGetBmcIp.Legacy
                 using (var reg = linked.Token.Register(() => tcs.TrySetCanceled(linked.Token)))
                 {
                     var lease = await tcs.Task;
-                    Log("DHCP lease acquired: IP=" + lease.IpAddress + " MAC=" + MacBytesToString(lease.MacAddress));
+                    Log("DHCP candidate acquired: IP=" + lease.IpAddress + " MAC=" + MacBytesToString(lease.MacAddress));
                     return lease;
                 }
             }
@@ -272,6 +377,77 @@ namespace EzGetBmcIp.Legacy
             if (mac == null || mac.Length == 0)
                 return "none";
             return BitConverter.ToString(mac);
+        }
+
+        private async Task RetryEndpointProbeAsync()
+        {
+            IPAddress ipAddress;
+            if (IsEndpointProbeRunning || !IPAddress.TryParse(DiscoveredIp, out ipAddress))
+                return;
+            try
+            {
+                var token = _flowCts?.Token ?? CancellationToken.None;
+                await ProbeBmcEndpointAsync(ipAddress, true, token);
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                Log("BMC endpoint retry failed: " + ex.Message);
+                EndpointStatusText = "重新检测管理页面时遇到问题：" + ex.Message;
+            }
+        }
+
+        private async Task<bool> ProbeBmcEndpointAsync(IPAddress ipAddress, bool autoOpen, CancellationToken cancellationToken)
+        {
+            IsEndpointProbeRunning = true;
+            EndpointStatusText = "地址已分配，正在检测 HTTPS 和 HTTP 管理页面...";
+            StatusText = "BMC 地址已分配，正在等待管理页面...";
+            DetailText = "地址：" + ipAddress + "；优先检测 HTTPS。";
+            ActivityText = "正在确认管理页面是否可以访问。";
+            BadgeText = "处理中";
+            BadgeColor = "#0078D4";
+
+            try
+            {
+                var endpoint = await BmcEndpointProbe.WaitForEndpointAsync(
+                    ipAddress, TimeSpan.FromSeconds(45), cancellationToken,
+                    message => Log("[Probe] " + message));
+
+                if (endpoint == null)
+                {
+                    PreferredBmcScheme = "https";
+                    EndpointStatusText = "候选地址已分配，但 45 秒内管理页面尚未响应。可以重新检测，或手动尝试 HTTPS / HTTP。";
+                    StatusText = "已获取候选地址，尚未确认 BMC 页面";
+                    DetailText = "设备可能仍在启动，也可能不是 BMC。";
+                    ActivityText = "候选地址已分配，可以重新检测或手动打开。";
+                    BadgeText = "等待页面";
+                    BadgeColor = "#8A6D1D";
+                    return false;
+                }
+
+                PreferredBmcScheme = endpoint.Scheme;
+                EndpointStatusText = endpoint.Scheme == "https"
+                    ? "已确认 HTTPS 管理页面可访问。"
+                    : "已确认 HTTP 管理页面可访问。";
+                if (autoOpen)
+                    OpenBrowserRequested?.Invoke(endpoint.Url);
+                StatusText = "BMC 管理页面已打开";
+                DetailText = "地址：" + endpoint.Url;
+                BadgeText = "已完成";
+                BadgeColor = "#107C10";
+                ActivityText = "BMC 管理页面已确认可访问，完成后点击退出。";
+                return true;
+            }
+            finally
+            {
+                IsEndpointProbeRunning = false;
+            }
+        }
+
+        private void OpenBrowserForScheme(string scheme)
+        {
+            if (!string.IsNullOrEmpty(DiscoveredIp))
+                OpenBrowserRequested?.Invoke(scheme + "://" + DiscoveredIp);
         }
 
         public async Task<bool> CleanupAsync()
@@ -313,6 +489,7 @@ namespace EzGetBmcIp.Legacy
         {
             _flowCts?.Cancel();
             try { await _flowTask; } catch (OperationCanceledException) { } catch { }
+            try { await _endpointProbeTask; } catch (OperationCanceledException) { } catch { }
 
             _dhcpServer?.Stop();
             if (_dhcpServer != null)
@@ -324,7 +501,18 @@ namespace EzGetBmcIp.Legacy
             {
                 using (var c = new CancellationTokenSource(TimeSpan.FromSeconds(70)))
                 {
-                    await NetworkConfigManager.ForceDhcpBestEffortAsync(_selectedAdapter, _subnetConfig, c.Token, releaseToolLease: true);
+                    if (_originalConfig != null)
+                    {
+                        await NetworkConfigManager.RestoreOriginalConfigAsync(
+                            _selectedAdapter, _originalConfig, _subnetConfig, c.Token);
+                    }
+                }
+
+                if (_recoverySnapshot != null)
+                {
+                    NetworkRecoveryStore.DeleteIfSessionMatches(_recoverySnapshot.SessionId);
+                    Log("Cleanup: recovery snapshot removed");
+                    _recoverySnapshot = null;
                 }
             }
         }

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,24 +16,37 @@ namespace EzGetBmcIp
         private readonly IPAddress _serverIp;
         private readonly IPAddress _mask;
         private readonly IPAddress _poolStart;
+        private readonly IPAddress _broadcastIp;
+        private readonly int _expectedInterfaceIndex;
         private const int DhcpServerPort = 67;
         private const int DhcpClientPort = 68;
 
         private readonly Dictionary<string, DhcpLease> _leases = new Dictionary<string, DhcpLease>();
         private readonly object _sync = new object();
+        private DhcpLease _lastAssignedLease;
         private UdpClient _udp;
         private CancellationTokenSource _cts;
 
-        public DhcpServer(SubnetConfig config)
+        public DhcpServer(SubnetConfig config, WiredAdapter adapter)
         {
             _serverIp = IPAddress.Parse(config.ServerIp);
             _mask = IPAddress.Parse(config.Mask);
             _poolStart = IPAddress.Parse(config.PoolStart);
+            _broadcastIp = CalculateBroadcastAddress(_serverIp, _mask);
+            _expectedInterfaceIndex = ResolveInterfaceIndex(adapter);
         }
 
         public event EventHandler<DhcpLease> LeaseAssigned;
         public event EventHandler<string> ErrorEncountered;
         public Action<string> Logger { get; set; }
+        public DhcpLease LastAssignedLease
+        {
+            get
+            {
+                lock (_sync)
+                    return _lastAssignedLease;
+            }
+        }
 
         public void Start()
         {
@@ -41,48 +55,76 @@ namespace EzGetBmcIp
                 return;
             }
 
-            _cts = new CancellationTokenSource();
-            _udp = new UdpClient(AddressFamily.InterNetwork);
-            _udp.EnableBroadcast = true;
-            _udp.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-            Logger?.Invoke("DHCP server starting on " + _serverIp + ":" + DhcpServerPort);
-            _udp.Client.Bind(new IPEndPoint(IPAddress.Any, DhcpServerPort));
-            Task.Run(() => ReceiveLoopAsync(_cts.Token));
+            try
+            {
+                _cts = new CancellationTokenSource();
+                _udp = new UdpClient(AddressFamily.InterNetwork);
+                _udp.EnableBroadcast = true;
+                _udp.Client.ExclusiveAddressUse = true;
+                _udp.Client.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.PacketInformation, true);
+                _udp.Client.Bind(new IPEndPoint(IPAddress.Any, DhcpServerPort));
+                Logger?.Invoke("DHCP server bound to " + _udp.Client.LocalEndPoint +
+                    "; accepting interface index " + _expectedInterfaceIndex +
+                    "; reply broadcast " + _broadcastIp);
+                Task.Run(() => ReceiveLoop(_cts.Token));
+            }
+            catch
+            {
+                ReleaseSocket();
+                throw;
+            }
         }
 
         public void Stop()
         {
             Logger?.Invoke("DHCP server stopping");
+            ReleaseSocket();
+            Logger?.Invoke("DHCP server stopped");
+        }
+
+        private void ReleaseSocket()
+        {
             _cts?.Cancel();
             _udp?.Close();
             _udp?.Dispose();
             _udp = null;
             _cts?.Dispose();
             _cts = null;
-            Logger?.Invoke("DHCP server stopped");
         }
 
         public void Dispose() => Stop();
 
-        private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
+        private void ReceiveLoop(CancellationToken cancellationToken)
         {
             while (!cancellationToken.IsCancellationRequested && _udp != null)
             {
                 try
                 {
-                    var receiveTask = _udp.ReceiveAsync();
-                    var completedTask = await Task.WhenAny(receiveTask, Task.Delay(-1, cancellationToken));
-                    if (completedTask != receiveTask)
-                    {
+                    var udp = _udp;
+                    if (udp == null)
                         break;
+                    var buffer = new byte[1500];
+                    EndPoint remoteEndpoint = new IPEndPoint(IPAddress.Any, 0);
+                    var flags = SocketFlags.None;
+                    IPPacketInformation packetInformation;
+                    var received = udp.Client.ReceiveMessageFrom(
+                        buffer, 0, buffer.Length, ref flags, ref remoteEndpoint, out packetInformation);
+                    if (!IsPacketFromExpectedInterface(_expectedInterfaceIndex, packetInformation.Interface))
+                    {
+                        Logger?.Invoke("DHCP packet ignored from interface index " +
+                            packetInformation.Interface + "; expected " + _expectedInterfaceIndex);
+                        continue;
                     }
-                    var packet = await receiveTask;
-                    await HandlePacketAsync(packet.Buffer, cancellationToken);
+                    HandlePacketAsync(buffer.Take(received).ToArray(), cancellationToken).GetAwaiter().GetResult();
                 }
                 catch (OperationCanceledException) { break; }
                 catch (ObjectDisposedException) { break; }
                 catch (SocketException se)
                 {
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
                     if (se.SocketErrorCode == SocketError.TimedOut
                         || se.SocketErrorCode == SocketError.ConnectionReset
                         || se.SocketErrorCode == SocketError.MessageSize
@@ -109,6 +151,11 @@ namespace EzGetBmcIp
             }
         }
 
+        internal static bool IsPacketFromExpectedInterface(int expectedInterfaceIndex, int packetInterfaceIndex)
+        {
+            return expectedInterfaceIndex <= 0 || packetInterfaceIndex == expectedInterfaceIndex;
+        }
+
         private async Task HandlePacketAsync(byte[] request, CancellationToken cancellationToken)
         {
             if (request.Length < 240 || request[0] != 1)
@@ -132,6 +179,17 @@ namespace EzGetBmcIp
 
             if (messageType == 3)
             {
+                var serverOption = GetOption(request, 54);
+                if (serverOption != null && serverOption.Length == 4)
+                {
+                    var requestedServer = new IPAddress(serverOption);
+                    if (!requestedServer.Equals(_serverIp))
+                    {
+                        Logger?.Invoke("DHCP: REQUEST ignored because it selected another server: " + requestedServer);
+                        return;
+                    }
+                }
+
                 var opt50 = GetOption(request, 50);
                 if (opt50 != null && opt50.Length == 4)
                 {
@@ -156,8 +214,8 @@ namespace EzGetBmcIp
             else
                 Logger?.Invoke("DHCP: REQUEST from " + MacBytesToString(mac) + " -> ACK " + lease.IpAddress);
 
-            var response = BuildResponse(request, mac, lease.IpAddress, responseType, _serverIp);
-            var destination = new IPEndPoint(IPAddress.Broadcast, DhcpClientPort);
+            var response = BuildResponse(request, mac, lease.IpAddress, responseType, _serverIp, _mask);
+            var destination = new IPEndPoint(_broadcastIp, DhcpClientPort);
             if (_udp != null)
             {
                 await _udp.SendAsync(response, response.Length, destination);
@@ -166,6 +224,8 @@ namespace EzGetBmcIp
             if (responseType == 5)
             {
                 Logger?.Invoke("DHCP: lease assigned " + lease.IpAddress + " to " + MacBytesToString(mac));
+                lock (_sync)
+                    _lastAssignedLease = lease;
                 LeaseAssigned?.Invoke(this, lease);
             }
         }
@@ -173,6 +233,38 @@ namespace EzGetBmcIp
         private static string MacBytesToString(byte[] mac)
         {
             return BitConverter.ToString(mac);
+        }
+
+        private static int ResolveInterfaceIndex(WiredAdapter adapter)
+        {
+            var normalizedMac = NormalizeMac(adapter.MacAddress);
+            var networkInterface = NetworkInterface.GetAllNetworkInterfaces().FirstOrDefault(item =>
+                NormalizeId(item.Id) == NormalizeId(adapter.Id)
+                || NormalizeMac(item.GetPhysicalAddress().ToString()) == normalizedMac);
+            var properties = networkInterface == null ? null : networkInterface.GetIPProperties().GetIPv4Properties();
+            if (properties == null)
+                throw new InvalidOperationException("无法确定所选网卡的 IPv4 接口索引。");
+            return properties.Index;
+        }
+
+        private static string NormalizeId(string value)
+        {
+            return value.Trim().Trim('{', '}').ToUpperInvariant();
+        }
+
+        private static string NormalizeMac(string value)
+        {
+            return new string(value.Where(Uri.IsHexDigit).ToArray()).ToUpperInvariant();
+        }
+
+        private static IPAddress CalculateBroadcastAddress(IPAddress address, IPAddress mask)
+        {
+            var addressBytes = address.GetAddressBytes();
+            var maskBytes = mask.GetAddressBytes();
+            var broadcast = new byte[addressBytes.Length];
+            for (var i = 0; i < broadcast.Length; i++)
+                broadcast[i] = (byte)(addressBytes[i] | ~maskBytes[i]);
+            return new IPAddress(broadcast);
         }
 
         private DhcpLease GetOrCreateLease(byte[] mac)
@@ -203,7 +295,13 @@ namespace EzGetBmcIp
             return BitConverter.ToString(mac).Replace("-", "");
         }
 
-        private static byte[] BuildResponse(byte[] request, byte[] mac, IPAddress clientIp, byte messageType, IPAddress serverIp)
+        private static byte[] BuildResponse(
+            byte[] request,
+            byte[] mac,
+            IPAddress clientIp,
+            byte messageType,
+            IPAddress serverIp,
+            IPAddress mask)
         {
             var response = new byte[300];
             response[0] = 2;
@@ -225,7 +323,7 @@ namespace EzGetBmcIp
                 WriteOption(options, 53, new[] { messageType });
                 WriteOption(options, 54, serverIp.GetAddressBytes());
                 WriteOption(options, 51, UInt32Bytes(3600));
-                WriteOption(options, 1, IPAddress.Parse("255.255.255.0").GetAddressBytes());
+                WriteOption(options, 1, mask.GetAddressBytes());
                 WriteOption(options, 3, serverIp.GetAddressBytes());
                 WriteOption(options, 6, serverIp.GetAddressBytes());
                 WriteOption(options, 58, UInt32Bytes(1800));

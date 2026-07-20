@@ -10,9 +10,31 @@ namespace EzGetBmcIp;
 
 public partial class App : Application
 {
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         WireLogger();
+
+        if (NetworkRecoveryStore.TryParseWatchdogArguments(
+            e.Args, out var ownerProcessId, out var recoverySessionId))
+        {
+            StartupUri = null;
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            base.OnStartup(e);
+
+            if (!IsAdministrator())
+            {
+                AppLogger.Log("Recovery watchdog is not elevated; recovery cannot run.");
+                Shutdown(1);
+                return;
+            }
+
+            var exitCode = await NetworkRecoveryStore.RunWatchdogAsync(
+                ownerProcessId,
+                recoverySessionId,
+                message => AppLogger.Log("[Recovery] " + message));
+            Shutdown(exitCode);
+            return;
+        }
 
         DispatcherUnhandledException += (_, ex) =>
         {

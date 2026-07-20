@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Security.Principal;
@@ -8,6 +9,9 @@ namespace EzGetBmcIp;
 
 internal static class DiagnosticReporter
 {
+    private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
+    private static readonly Encoding Utf8WithBom = new UTF8Encoding(true);
+    private static readonly Encoding NativeConsoleEncoding = CreateNativeConsoleEncoding();
     private static readonly string ReportDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ezgetBMCIP");
 
@@ -28,6 +32,8 @@ internal static class DiagnosticReporter
         AppendLine(sb, "Administrator", isAdmin ? "true" : "false");
         AppendLine(sb, "LogPath", AppLogger.LogFilePath);
         AppendLine(sb, "ReportPath", ReportFilePath);
+        AppendLine(sb, "RecoverySnapshotPath", NetworkRecoveryStore.RecoveryFilePath);
+        AppendLine(sb, "RecoverySnapshotExists", File.Exists(NetworkRecoveryStore.RecoveryFilePath) ? "true" : "false");
 
         await AppendSummaryAsync(sb, viewModel, isAdmin);
 
@@ -38,7 +44,9 @@ internal static class DiagnosticReporter
         AppendLine(sb, "Activity", viewModel.ActivityText);
         AppendLine(sb, "Subnet", viewModel.SubnetConfig.ServerDisplay);
         AppendLine(sb, "BMC pool address", viewModel.SubnetConfig.PoolDisplay);
+        AppendLine(sb, "DHCP listener", viewModel.DhcpListenerStatus);
         AppendLine(sb, "Discovered URL", viewModel.IsIpDiscovered ? viewModel.DiscoveredIpUrl : "(not discovered)");
+        AppendLine(sb, "Endpoint status", viewModel.EndpointStatusText);
 
         var selected = viewModel.SelectedAdapterItem;
         AppendHeader(sb, "Selected adapter");
@@ -79,7 +87,7 @@ internal static class DiagnosticReporter
         AppendHeader(sb, "Current session application log");
         sb.AppendLine(ReadCurrentSessionLogLines(300));
 
-        await File.WriteAllTextAsync(ReportFilePath, sb.ToString(), new UTF8Encoding(false));
+        await File.WriteAllTextAsync(ReportFilePath, sb.ToString(), Utf8WithBom);
         AppLogger.Log("Diagnostics report written: " + ReportFilePath);
         return ReportFilePath;
     }
@@ -108,17 +116,27 @@ internal static class DiagnosticReporter
         AppendLine(sb, "UDP 67", await GetUdp67SummaryAsync());
     }
 
-    private static async Task AppendCommandAsync(StringBuilder sb, string title, string fileName, string arguments)
+    private static async Task AppendCommandAsync(
+        StringBuilder sb,
+        string title,
+        string fileName,
+        string arguments,
+        Encoding? outputEncoding = null)
     {
         AppendHeader(sb, title);
-        sb.AppendLine(await RunProcessAsync(fileName, arguments));
+        sb.AppendLine(await RunProcessAsync(fileName, arguments, outputEncoding: outputEncoding));
     }
 
     private static async Task AppendPowerShellAsync(StringBuilder sb, string title, string command)
     {
         var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(
             "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); $OutputEncoding=[Console]::OutputEncoding; $ProgressPreference='SilentlyContinue'; " + command));
-        await AppendCommandAsync(sb, title, "powershell.exe", "-NoProfile -ExecutionPolicy Bypass -EncodedCommand " + encoded);
+        await AppendCommandAsync(
+            sb,
+            title,
+            "powershell.exe",
+            "-NoProfile -OutputFormat Text -ExecutionPolicy Bypass -EncodedCommand " + encoded,
+            Utf8NoBom);
     }
 
     private static async Task<string> GetUdp67SummaryAsync()
@@ -126,7 +144,11 @@ internal static class DiagnosticReporter
         var command = "Get-NetUDPEndpoint -LocalPort 67 -ErrorAction SilentlyContinue | Select-Object -First 5 LocalAddress,LocalPort,OwningProcess | Format-Table -HideTableHeaders";
         var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(
             "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); $OutputEncoding=[Console]::OutputEncoding; $ProgressPreference='SilentlyContinue'; " + command));
-        var output = await RunProcessAsync("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -EncodedCommand " + encoded, includeCommandLine: false);
+        var output = await RunProcessAsync(
+            "powershell.exe",
+            "-NoProfile -OutputFormat Text -ExecutionPolicy Bypass -EncodedCommand " + encoded,
+            includeCommandLine: false,
+            outputEncoding: Utf8NoBom);
         var lines = output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries)
             .Where(line => !line.StartsWith("ExitCode:", StringComparison.OrdinalIgnoreCase))
             .Select(line => line.Trim())
@@ -135,10 +157,15 @@ internal static class DiagnosticReporter
         return lines.Length == 0 ? "free or not visible" : string.Join(" | ", lines);
     }
 
-    private static async Task<string> RunProcessAsync(string fileName, string arguments, bool includeCommandLine = true)
+    internal static async Task<string> RunProcessAsync(
+        string fileName,
+        string arguments,
+        bool includeCommandLine = true,
+        Encoding? outputEncoding = null)
     {
         try
         {
+            var encoding = outputEncoding ?? NativeConsoleEncoding;
             using var process = new Process
             {
                 StartInfo = new ProcessStartInfo(fileName, arguments)
@@ -147,25 +174,25 @@ internal static class DiagnosticReporter
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
-                    StandardOutputEncoding = Encoding.UTF8,
-                    StandardErrorEncoding = Encoding.UTF8
+                    StandardOutputEncoding = encoding,
+                    StandardErrorEncoding = encoding
                 },
                 EnableRaisingEvents = true
             };
 
             process.Start();
-            var stdoutTask = process.StandardOutput.ReadToEndAsync();
-            var stderrTask = process.StandardError.ReadToEndAsync();
+            var stdoutTask = ProcessOutputDecoder.ReadAllBytesAsync(process.StandardOutput.BaseStream);
+            var stderrTask = ProcessOutputDecoder.ReadAllBytesAsync(process.StandardError.BaseStream);
             var waitTask = process.WaitForExitAsync();
-            var completed = await Task.WhenAny(waitTask, Task.Delay(TimeSpan.FromSeconds(8)));
+            var completed = await Task.WhenAny(waitTask, Task.Delay(TimeSpan.FromSeconds(15)));
             if (completed != waitTask)
             {
                 try { process.Kill(entireProcessTree: true); } catch { }
                 return "Command timed out: " + fileName + " " + arguments;
             }
 
-            var stdout = CleanProcessOutput(await stdoutTask);
-            var stderr = CleanProcessOutput(await stderrTask);
+            var stdout = CleanProcessOutput(ProcessOutputDecoder.Decode(await stdoutTask, encoding));
+            var stderr = CleanProcessOutput(ProcessOutputDecoder.Decode(await stderrTask, encoding));
             var result = new StringBuilder();
             if (includeCommandLine)
                 result.AppendLine("Command: " + fileName + " " + arguments);
@@ -183,6 +210,14 @@ internal static class DiagnosticReporter
         {
             return "Command failed: " + fileName + " " + arguments + Environment.NewLine + ex;
         }
+    }
+
+    internal static Encoding GetNativeConsoleEncoding() => NativeConsoleEncoding;
+
+    private static Encoding CreateNativeConsoleEncoding()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        return Encoding.GetEncoding(CultureInfo.CurrentCulture.TextInfo.OEMCodePage);
     }
 
     private static string CleanProcessOutput(string text)

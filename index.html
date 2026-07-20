@@ -771,7 +771,7 @@
                         适用场景：笔记本用网线直连服务器的 IPMI/BMC 管理口。工具会临时接管你选择的网卡，给 BMC 分配一个地址，并打开管理页面。
                     </p>
                     <div class="tutorial-note">
-                        开始前确认两件事：软件需要管理员权限；网线要插到服务器的 IPMI/BMC 专用管理口，不要插到普通业务网口。退出时工具会把所选网卡恢复为 DHCP。
+                        开始前确认两件事：软件需要管理员权限；网线要插到服务器的 IPMI/BMC 专用管理口，不要插到普通业务网口。退出时工具会恢复所选网卡原来的网络配置。
                     </div>
 
                     <section class="tutorial-step">
@@ -779,7 +779,7 @@
                             <div class="step-kicker">Step 0</div>
                             <h3>先看说明，不要接入局域网使用</h3>
                             <p>
-                                IPMI/BMC 直连助手只用于直连。它会修改你选择的网卡 IP 配置，并在退出时恢复为 DHCP。
+                                IPMI/BMC 直连助手只用于直连。它会临时修改你选择的网卡 IP 配置，并在退出时恢复原来的 IPv4 与 DNS 设置。
                             </p>
                             <ul>
                                 <li>如果这块网卡正在上网，运行期间网络会被临时切走。</li>
@@ -847,16 +847,16 @@
                     <section class="tutorial-step">
                         <div>
                             <div class="step-kicker">Step 5</div>
-                            <h3>完成后退出，等待网卡恢复 DHCP</h3>
+                            <h3>完成后退出，等待网卡恢复原始配置</h3>
                             <p>
-                                点击“完成 / 退出”后，工具会关闭内置 DHCP 服务，并把所选网卡恢复为 DHCP。恢复完成后再把网线接回交换机或原网络。
+                                点击“完成 / 退出”后，工具会关闭内置 DHCP 服务，并恢复、验证使用工具前的网卡设置。确认恢复完成后再把网线接回交换机或原网络。
                             </p>
                             <ul>
                                 <li>如果恢复失败，窗口会保留错误提示，不会静默退出。</li>
                                 <li>需要排障时，点击左下角“日志”打开日志文件。</li>
                             </ul>
                         </div>
-                        <img class="tutorial-shot" src="assets/tutorial/step-5-cleanup.png" alt="退出并恢复 DHCP" loading="lazy" />
+                        <img class="tutorial-shot" src="assets/tutorial/step-5-cleanup.png" alt="退出并恢复原始网卡配置" loading="lazy" />
                     </section>
                 </div>
             </div>
@@ -1006,7 +1006,7 @@
       <h3>使用提示</h3>
       <p>运行后选择网卡 → 连接 IPMI/BMC 管理口 → 等待页面打开 → 操作完成后点击"完成 / 退出"。</p>
       <ul>
-        <li>退出前会<strong>恢复所选网卡为 DHCP</strong>，不会恢复为原来的静态 IP 配置。</li>
+        <li>退出前会<strong>恢复所选网卡的原始 IPv4 与 DNS 配置</strong>，并通过实时网络状态确认结果。</li>
         <li>需要<strong>管理员权限</strong>，启动时自动 UAC 提权。</li>
         <li>确保网线插在服务器的 <strong>IPMI 专用管理口</strong>，不是普通网口。</li>
         <li>自定义网段只支持私有 IPv4：<code>10.x.x.x</code>、<code>172.16-31.x.x</code>、<code>192.168.x.x</code>。</li>
@@ -1015,13 +1015,13 @@
       <h3>功能</h3>
       <ul>
         <li>🖥️ 检测有线网卡，多网卡时可选</li>
-        <li>📝 退出时恢复所选网卡为 DHCP 模式</li>
+        <li>📝 退出时恢复所选网卡的原始网络配置</li>
         <li>🔧 临时配置本机为 <code>10.77.77.1/255.255.255.0</code></li>
         <li>📡 内嵌 DHCP Server（直连场景固定分配 <code>.100</code>）</li>
         <li>🧓 Legacy 版面向 Windows 7 SP1 / 8 / 8.1</li>
         <li>🔗 WMI/CIM 轮询网卡链路状态</li>
         <li>🌐 获取 IPMI IP 后调用浏览器打开 BMC 页面</li>
-        <li>🧹 关闭时停止 DHCP、恢复所选网卡为 DHCP</li>
+        <li>🧹 关闭时停止 DHCP、恢复并验证原始网卡配置</li>
         <li>🪜 5 步可视化进度指示，失败时明确提示</li>
         <li>🌗 自动跟随 Windows 系统亮/暗主题</li>
       </ul>
@@ -1032,7 +1032,7 @@
         <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:var(--accent);white-space:nowrap;vertical-align:top;">2. 连接网线</td><td style="padding:4px 0;">等待网线插入 IPMI 管理口，检测 Link UP</td></tr>
         <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:var(--accent);white-space:nowrap;vertical-align:top;">3. 获取 IPMI IP</td><td style="padding:4px 0;">DHCP 监听 IPMI 请求，自动获取地址</td></tr>
         <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:var(--accent);white-space:nowrap;vertical-align:top;">4. 打开 BMC</td><td style="padding:4px 0;">使用浏览器打开 <code>http://&lt;IPMI IP&gt;</code></td></tr>
-        <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:var(--accent);white-space:nowrap;vertical-align:top;">5. 清理退出</td><td style="padding:4px 0;">关闭 DHCP Server，恢复所选网卡为 DHCP</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:var(--accent);white-space:nowrap;vertical-align:top;">5. 清理退出</td><td style="padding:4px 0;">关闭 DHCP Server，恢复并验证原始网卡配置</td></tr>
       </table>
     </div>`;
 

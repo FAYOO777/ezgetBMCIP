@@ -4,5 +4,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>EzGetBmcIp</RootNamespace>
+    <Version>1.3.5</Version>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\BmcEndpointProbe.cs" Link="BmcEndpointProbe.cs" />
+    <Compile Include="..\NetworkRecoveryStore.cs" Link="NetworkRecoveryStore.cs" />
+    <Compile Include="..\ProcessOutputDecoder.cs" Link="ProcessOutputDecoder.cs" />
+  </ItemGroup>
 </Project>

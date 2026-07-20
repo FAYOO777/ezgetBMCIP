@@ -59,7 +59,7 @@
                                 <TextBlock FontSize="13" TextWrapping="Wrap"
                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                            Margin="0,0,0,8"
-                                           Text="2. 此工具会临时修改所选网卡 IP，退出时恢复为 DHCP。" />
+                                           Text="2. 此工具会临时修改所选网卡 IP，退出时恢复原始配置。" />
                                 <TextBlock FontSize="13" TextWrapping="Wrap"
                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                            Text="3. 仅适用于直连场景，不适合在已有局域网内使用。" />
@@ -368,7 +368,7 @@
                 <Border Style="{StaticResource CardBorderStyle}" Padding="28,20"
                         Visibility="{Binding IsIpCardVisible, Converter={StaticResource BoolToVis}}">
                     <StackPanel HorizontalAlignment="Center">
-                        <TextBlock Text="已获取 BMC 管理地址" FontSize="15" FontWeight="Bold"
+                        <TextBlock Text="已分配 BMC 管理地址" FontSize="15" FontWeight="Bold"
                                    Foreground="{StaticResource BrandSuccessBrush}"
                                    HorizontalAlignment="Center" Margin="0,0,0,10" />
 
@@ -387,22 +387,31 @@
                             </Hyperlink>
                         </TextBlock>
 
-                        <TextBlock Text="点击地址可重新打开；也可以复制后手动访问。"
+                        <TextBlock Text="{Binding EndpointStatusText}"
                                    FontSize="12"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   HorizontalAlignment="Center"
+                                   HorizontalAlignment="Center" TextAlignment="Center"
+                                   MaxWidth="520" TextWrapping="Wrap"
                                    Margin="0,0,0,14" />
 
-                        <!-- Copy + Open buttons -->
+                        <!-- Copy + protocol-specific actions -->
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                             <ui:Button Content="{Binding CopyButtonText}"
                                        Command="{Binding CopyIpCommand}"
                                        Appearance="Secondary"
-                                       Width="112" Height="36" Margin="0,0,10,0" />
-                            <ui:Button Content="打开 BMC →"
+                                       Width="104" Height="36" Margin="0,0,8,0" />
+                            <ui:Button Content="打开 HTTPS"
+                                       Command="{Binding OpenHttpsCommand}"
                                        Style="{StaticResource BrandPrimaryButtonStyle}"
-                                       Width="118" Height="36"
-                                       Click="OpenBmcButton_Click" />
+                                       Width="112" Height="36" Margin="0,0,8,0" />
+                            <ui:Button Content="打开 HTTP"
+                                       Command="{Binding OpenHttpCommand}"
+                                       Appearance="Secondary"
+                                       Width="104" Height="36" Margin="0,0,8,0" />
+                            <ui:Button Content="重新检测"
+                                       Command="{Binding RetryEndpointCommand}"
+                                       Appearance="Secondary"
+                                       Width="104" Height="36" />
                         </StackPanel>
                     </StackPanel>
                 </Border>
