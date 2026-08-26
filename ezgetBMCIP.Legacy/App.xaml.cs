@@ -69,6 +69,11 @@ namespace EzGetBmcIp.Legacy
             catch { }
         }
 
+        internal static void LogSupport(string message)
+        {
+            LogError(message);
+        }
+
         private static void EnsureLogUtf8Bom()
         {
             if (_logEncodingPrepared)

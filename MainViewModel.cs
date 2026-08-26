@@ -3,7 +3,6 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Input;
@@ -255,8 +254,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private DispatcherTimer? _copyFeedbackTimer;
 
-    public string VersionText => GetVersionText();
-    public string GitHubUrl => "https://github.com/FAYOO777/ezgetBMCIP";
+    public string VersionText => AppVersionText.Get();
     public string ExitButtonText => IsIpDiscovered ? "恢复网卡并退出" : "完成 / 退出";
 
     private bool _isFlowStarted;
@@ -302,6 +300,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public event Action? RequestClose;
     public event Action<string>? OpenBrowserRequested;
+    internal event Func<ConsentNotice, bool>? ConsentRequested;
 
     public MainViewModel()
     {
@@ -407,6 +406,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
+        if (!RequestConsent(ConsentNotice.CreateUsageRisk()))
+        {
+            LogInfo("Usage risk consent declined");
+            return;
+        }
+
         AppPhase = AppPhase.AdapterSelection;
         StatusText = "选择连接 BMC 的网卡";
         DetailText = "选择直连服务器管理口的有线网卡，然后点击「开始」。";
@@ -428,7 +433,30 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
+        AdapterOriginalConfig originalConfig;
+        try
+        {
+            originalConfig = NetworkConfigManager.CaptureOriginalConfig(SelectedAdapterItem);
+        }
+        catch (Exception ex)
+        {
+            LogInfo("Original configuration capture failed before consent: " + ex.Message);
+            StatusText = "❌ 无法读取网卡原始配置";
+            DetailText = "为避免覆盖现有网络设置，已停止操作：" + ex.Message;
+            BadgeState = StepState.Failed;
+            BadgeText = "! 无法确认";
+            return;
+        }
+
+        if (!RequestConsent(ConsentNotice.CreateNetworkChange(
+                SelectedAdapterItem, _subnetConfig, originalConfig)))
+        {
+            LogInfo("Network change consent declined");
+            return;
+        }
+
         _selectedAdapter = SelectedAdapterItem;
+        _originalConfig = originalConfig;
         AdapterSelectionEnabled = false;
         StartButtonEnabled = false;
         AppPhase = AppPhase.FlowRunning;
@@ -476,11 +504,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private async Task ConfigureLocalAdapterAsync(CancellationToken ct)
     {
-        SetStep(0, StepState.Active, "正在记录原始配置：" + _selectedAdapter!.Name);
-        SetBusy("正在配置本机网卡...", "先记录原始配置，再将网卡切换到 " + _subnetConfig.ServerDisplay + "。");
+        if (_selectedAdapter is null || _originalConfig is null)
+            throw new InvalidOperationException("未确认网卡原始配置，已停止修改网络设置。");
+
+        SetStep(0, StepState.Active, "正在配置本机网卡：" + _selectedAdapter.Name);
+        SetBusy("正在配置本机网卡...", "已确认原始配置，正在将网卡切换到 " + _subnetConfig.ServerDisplay + "。");
         StartEllipsis();
 
-        _originalConfig = NetworkConfigManager.CaptureOriginalConfig(_selectedAdapter);
         LogInfo("Original config: dhcp=" + _originalConfig.DhcpEnabled +
             " dnsFromDhcp=" + _originalConfig.DnsServersFromDhcp +
             " addrs=" + _originalConfig.StaticAddresses.Count +
@@ -839,6 +869,30 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private static void LogInfo(string message) => AppLogger.Log(message);
 
+    private bool RequestConsent(ConsentNotice notice)
+    {
+        var presenter = ConsentRequested;
+        if (presenter is null)
+        {
+            LogInfo("Consent blocked because no presenter is registered: " + notice.Title);
+            return false;
+        }
+
+        try
+        {
+            return presenter.Invoke(notice);
+        }
+        catch (Exception ex)
+        {
+            LogInfo("Consent dialog failed: " + ex.Message);
+            StatusText = "❌ 无法显示风险告知";
+            DetailText = "为避免误操作，已停止继续：" + ex.Message;
+            BadgeState = StepState.Failed;
+            BadgeText = "! 无法确认";
+            return false;
+        }
+    }
+
     public void CancelFlow()
     {
         LogInfo("Cancel requested");
@@ -911,25 +965,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
         catch (OperationCanceledException)
         {
         }
-    }
-
-    private static string GetVersionText()
-    {
-        var version = Assembly.GetExecutingAssembly()
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
-            .InformationalVersion;
-
-        if (string.IsNullOrWhiteSpace(version))
-            version = Assembly.GetExecutingAssembly().GetName().Version?.ToString();
-
-        if (string.IsNullOrWhiteSpace(version))
-            return "v0.0.0";
-
-        var plusIndex = version.IndexOf('+');
-        if (plusIndex >= 0)
-            version = version[..plusIndex];
-
-        return version.StartsWith("v", StringComparison.OrdinalIgnoreCase) ? version : "v" + version;
     }
 
     private void MarkCurrentFailure(string message)

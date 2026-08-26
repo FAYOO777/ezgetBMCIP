@@ -1,10 +1,12 @@
 using System.IO;
+using System.IO.Compression;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Xml.Serialization;
@@ -27,6 +29,12 @@ internal static class Program
 
             RecoverySnapshotRoundTrips();
             RecoverySnapshotMatchesAdapterIdentity();
+            StaticRestoreUsesNamedGatewayMetric();
+            DhcpModeUsesRegistryValues();
+            ConsentNoticeDescribesNetworkChanges();
+            ConsentDialogRequiresActiveAcknowledgement();
+            SupportBundleShortcutMatches();
+            await SupportBundleArchiveContainsLogAndDiagnosticsAsync();
             DhcpServerUsesWildcardSocketAndInterfaceFilter();
             DhcpLeaseAssignedBeforeWaitIsCached();
             DhcpRequestServerSelectionIsRespected();
@@ -42,6 +50,191 @@ internal static class Program
             Console.Error.WriteLine(ex);
             return 1;
         }
+    }
+
+    private static void ConsentNoticeDescribesNetworkChanges()
+    {
+        var adapter = new WiredAdapter("测试网卡", "直连 BMC 管理口", "test-id", "001122334455");
+        var subnet = new SubnetConfig
+        {
+            Octet1 = 192,
+            Octet2 = 168,
+            Octet3 = 55,
+            Octet4 = 1
+        };
+        var staticConfig = new AdapterOriginalConfig
+        {
+            DhcpEnabled = false,
+            DnsServersFromDhcp = false
+        };
+        staticConfig.StaticAddresses.Add((IPAddress.Parse("192.168.1.20"), IPAddress.Parse("255.255.255.0")));
+        staticConfig.Gateways.Add(IPAddress.Parse("192.168.1.1"));
+        staticConfig.DnsServers.Add(IPAddress.Parse("1.1.1.1"));
+        staticConfig.DnsServers.Add(IPAddress.Parse("8.8.8.8"));
+
+        var staticNotice = ConsentNotice.CreateNetworkChange(adapter, subnet, staticConfig);
+        var staticText = string.Join("\n", staticNotice.Items);
+        Assert(staticNotice.Title == "网络修改风险告知", "Network-change notice title was incorrect.");
+        Assert(staticText.Contains("192.168.55.1 / 24"), "Temporary adapter IP was not disclosed.");
+        Assert(staticText.Contains("192.168.55.100"), "Expected BMC IP was not disclosed.");
+        Assert(staticText.Contains("192.168.1.20 / 255.255.255.0"), "Static IPv4 restore target was not disclosed.");
+        Assert(staticText.Contains("192.168.1.1"), "Static gateway restore target was not disclosed.");
+        Assert(staticText.Contains("1.1.1.1") && staticText.Contains("8.8.8.8"),
+            "Static DNS restore targets were not disclosed.");
+        Assert(staticText.Contains("不会主动还原 BMC"),
+            "The notice did not disclose that BMC settings are not restored.");
+        Assert(staticText.Contains("DNS 服务器设置会被临时清空"),
+            "The temporary DNS clearing was not disclosed.");
+
+        var dhcpConfig = AdapterOriginalConfig.CreateDhcp();
+        dhcpConfig.StaticAddresses.Add((IPAddress.Parse("10.10.10.25"), IPAddress.Parse("255.255.255.0")));
+        dhcpConfig.Gateways.Add(IPAddress.Parse("10.10.10.1"));
+        dhcpConfig.DnsServers.Add(IPAddress.Parse("10.10.10.53"));
+        var dhcpNotice = ConsentNotice.CreateNetworkChange(adapter, subnet, dhcpConfig);
+        var dhcpText = string.Join("\n", dhcpNotice.Items);
+        Assert(dhcpText.Contains("DHCP 自动获取"), "DHCP restore mode was not disclosed.");
+        Assert(dhcpText.Contains("10.10.10.25") && dhcpText.Contains("10.10.10.1") && dhcpText.Contains("10.10.10.53"),
+            "Current DHCP address, gateway, and DNS were not disclosed.");
+        Assert(dhcpText.Contains("重新获取的租约可能不同"), "DHCP lease caveat was not disclosed.");
+        Assert(dhcpText.Contains("不保证立即恢复联网"), "DHCP connectivity caveat was not disclosed.");
+    }
+
+    private static void SupportBundleShortcutMatches()
+    {
+        Assert(SupportBundleShortcut.Matches(ModifierKeys.Alt, Key.L, Key.None),
+            "Alt+L did not match the support-bundle shortcut.");
+        Assert(SupportBundleShortcut.Matches(ModifierKeys.Alt, Key.System, Key.L),
+            "Alt+L reported as Key.System did not match the support-bundle shortcut.");
+        Assert(!SupportBundleShortcut.Matches(ModifierKeys.None, Key.L, Key.None),
+            "L without Alt matched the support-bundle shortcut.");
+        Assert(!SupportBundleShortcut.Matches(ModifierKeys.Alt | ModifierKeys.Control, Key.L, Key.None),
+            "Alt+Ctrl+L matched the support-bundle shortcut.");
+        Assert(!SupportBundleShortcut.Matches(ModifierKeys.Alt, Key.D, Key.None),
+            "Alt+D matched the support-bundle shortcut.");
+    }
+
+    private static async Task SupportBundleArchiveContainsLogAndDiagnosticsAsync()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "ezgetBMCIP-smoke-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var logPath = Path.Combine(root, "source", "ezgetBMCIP.log");
+            Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+            await File.WriteAllTextAsync(logPath, "support log content", new UTF8Encoding(true));
+
+            var archiveDirectory = Path.Combine(root, "Support");
+            var stagingRoot = Path.Combine(root, "staging");
+            var progress = new ProgressRecorder();
+            var firstArchive = await SupportBundleCollector.CreateAsync(
+                "ezgetBMCIP-support",
+                logPath,
+                reportPath =>
+                {
+                    progress.Report(new SupportBundleProgress(10, "正在收集应用和网络状态..."));
+                    progress.Report(new SupportBundleProgress(75, "正在写入诊断报告..."));
+                    return File.WriteAllTextAsync(reportPath, "diagnostic report content", new UTF8Encoding(true));
+                },
+                progress,
+                archiveDirectory,
+                stagingRoot);
+            var secondArchive = await SupportBundleCollector.CreateAsync(
+                "ezgetBMCIP-support",
+                logPath,
+                reportPath => File.WriteAllTextAsync(reportPath, "diagnostic report content", new UTF8Encoding(true)),
+                archiveDirectory,
+                stagingRoot);
+
+            var expectedProgress = new[] { 0, 10, 75, 85, 95, 100 };
+            Assert(progress.Items.Select(item => item.Percent).SequenceEqual(expectedProgress),
+                "Support-bundle progress stages were incomplete or out of order.");
+            Assert(progress.Items.Zip(progress.Items.Skip(1), (left, right) => left.Percent <= right.Percent).All(value => value),
+                "Support-bundle progress decreased between stages.");
+            Assert(progress.Items.Last().Percent == 100, "Successful support collection did not report 100%.");
+
+            var failureProgress = new ProgressRecorder();
+            try
+            {
+                await SupportBundleCollector.CreateAsync(
+                    "ezgetBMCIP-support",
+                    logPath,
+                    reportPath =>
+                    {
+                        failureProgress.Report(new SupportBundleProgress(10, "正在收集应用和网络状态..."));
+                        return Task.FromException(new InvalidOperationException("Expected diagnostic writer failure."));
+                    },
+                    failureProgress,
+                    archiveDirectory,
+                    stagingRoot);
+                throw new InvalidOperationException("A failing diagnostic writer unexpectedly created a support archive.");
+            }
+            catch (InvalidOperationException ex) when (ex.Message == "Expected diagnostic writer failure.")
+            {
+            }
+            Assert(!failureProgress.Items.Any(item => item.Percent == 100),
+                "Failed support collection reported a completed progress stage.");
+
+            Assert(File.Exists(firstArchive), "First support archive was not created.");
+            Assert(File.Exists(secondArchive), "Second support archive was not created.");
+            Assert(!string.Equals(firstArchive, secondArchive, StringComparison.OrdinalIgnoreCase),
+                "Repeated support collection overwrote the first archive.");
+            Assert(Path.GetFileName(firstArchive).StartsWith("ezgetBMCIP-support-", StringComparison.Ordinal),
+                "Support archive name did not include the configured prefix.");
+
+            using var archive = ZipFile.OpenRead(firstArchive);
+            var logEntry = archive.GetEntry("ezgetBMCIP.log");
+            var diagnosticsEntry = archive.GetEntry("diagnostics.txt");
+            Assert(logEntry is not null, "Support archive did not contain ezgetBMCIP.log.");
+            Assert(diagnosticsEntry is not null, "Support archive did not contain diagnostics.txt.");
+
+            using var logReader = new StreamReader(logEntry!.Open(), Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+            using var diagnosticsReader = new StreamReader(diagnosticsEntry!.Open(), Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+            Assert(await logReader.ReadToEndAsync() == "support log content",
+                "Support archive log content was incorrect.");
+            Assert(await diagnosticsReader.ReadToEndAsync() == "diagnostic report content",
+                "Support archive diagnostics content was incorrect.");
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static void ConsentDialogRequiresActiveAcknowledgement()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var app = new App();
+                app.InitializeComponent();
+                ApplicationThemeManager.Apply(ApplicationTheme.Light, WindowBackdropType.None, updateAccent: true);
+
+                var dialog = new ConsentDialog(ConsentNotice.CreateUsageRisk());
+                var acknowledgement = (System.Windows.Controls.CheckBox)dialog.FindName("AcknowledgementCheckBox");
+                var agreeButton = (Wpf.Ui.Controls.Button)dialog.FindName("AgreeButton");
+                Assert(acknowledgement.IsChecked != true, "Consent acknowledgement must start unchecked.");
+                Assert(!agreeButton.IsEnabled, "Consent button must start disabled.");
+
+                acknowledgement.IsChecked = true;
+                Assert(agreeButton.IsEnabled, "Consent button did not enable after acknowledgement.");
+
+                dialog.Close();
+                app.Shutdown();
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+            }
+        });
+
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        if (!thread.Join(TimeSpan.FromSeconds(20)))
+            throw new TimeoutException("Consent dialog test timed out.");
+        if (failure is not null)
+            throw new InvalidOperationException("Consent dialog test failed.", failure);
     }
 
     private static void DhcpLeaseAssignedBeforeWaitIsCached()
@@ -205,6 +398,46 @@ internal static class Program
             "Unrelated adapter was incorrectly matched.");
     }
 
+    private static void StaticRestoreUsesNamedGatewayMetric()
+    {
+        var adapter = new WiredAdapter("Ethernet", "Test adapter", "test-id", "001122334455");
+        var config = new AdapterOriginalConfig
+        {
+            DhcpEnabled = false,
+            DnsServersFromDhcp = false
+        };
+        config.StaticAddresses.Add((IPAddress.Parse("192.168.50.20"), IPAddress.Parse("255.255.255.0")));
+        config.Gateways.Add(IPAddress.Parse("192.168.50.1"));
+        config.GatewayMetrics.Add(25);
+
+        var command = NetworkConfigManager.BuildStaticAddressRestoreCommand(adapter, config);
+        Assert(command.Contains("source=static address=192.168.50.20 mask=255.255.255.0"),
+            "Static restoration must use named address and mask arguments.");
+        Assert(command.Contains("gateway=192.168.50.1 gwmetric=25"),
+            "Static restoration did not explicitly restore the gateway metric.");
+        Assert(NetworkConfigManager.GatewayMetricsMatch(new[] { 25 }, new[] { 25 }, false),
+            "Matching gateway metrics were rejected.");
+        Assert(!NetworkConfigManager.GatewayMetricsMatch(new[] { 5 }, new[] { 25 }, false),
+            "Different gateway metrics were accepted.");
+
+        var noGateway = new AdapterOriginalConfig { DhcpEnabled = false, DnsServersFromDhcp = false };
+        noGateway.StaticAddresses.Add((IPAddress.Parse("192.168.50.20"), IPAddress.Parse("255.255.255.0")));
+        Assert(NetworkConfigManager.BuildStaticAddressRestoreCommand(adapter, noGateway).EndsWith("gateway=none"),
+            "Static restoration without a gateway must explicitly remove the gateway.");
+    }
+
+    private static void DhcpModeUsesRegistryValues()
+    {
+        Assert(NetworkConfigManager.TryReadDhcpEnabled(0) == false,
+            "A registry EnableDHCP value of 0 must restore static IPv4 mode.");
+        Assert(NetworkConfigManager.TryReadDhcpEnabled(1) == true,
+            "A registry EnableDHCP value of 1 must restore DHCP mode.");
+        Assert(NetworkConfigManager.TryReadDhcpEnabled("0") == false,
+            "String registry DHCP values must be parsed.");
+        Assert(NetworkConfigManager.TryReadDhcpEnabled(null) is null,
+            "Missing registry DHCP values must use the fallback detector.");
+    }
+
     private static async Task EndpointProbeFindsListeningPortAsync()
     {
         var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -260,6 +493,14 @@ internal static class Program
                     Width = 700,
                     Height = 900
                 };
+                var supportProgressCard = (System.Windows.Controls.Border)window.FindName("SupportProgressCard");
+                Assert(supportProgressCard is not null && supportProgressCard.Visibility == Visibility.Collapsed,
+                    "Support progress card must be hidden until Alt+L collection starts.");
+                var visibleSupportProgressCard = supportProgressCard!;
+                typeof(MainWindow).GetMethod("ShowSupportProgress", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(window, new object[] { new SupportBundleProgress(60, "正在读取网卡配置...") });
+                Assert(visibleSupportProgressCard.Visibility == Visibility.Visible,
+                    "Support progress card was not shown for an active collection stage.");
                 var vm = (MainViewModel)window.DataContext;
                 vm.AppPhase = AppPhase.FlowRunning;
                 vm.DiscoveredIp = "10.77.77.100";
@@ -291,6 +532,17 @@ internal static class Program
                     for (var j = i + 1; j < buttonBounds.Count; j++)
                         Assert(!buttonBounds[i].IntersectsWith(buttonBounds[j]), "Endpoint action buttons overlap.");
                 }
+
+                var supportProgressPoint = visibleSupportProgressCard.TransformToAncestor(window).Transform(new Point(0, 0));
+                var supportProgressBounds = new Rect(
+                    supportProgressPoint.X,
+                    supportProgressPoint.Y,
+                    visibleSupportProgressCard.ActualWidth,
+                    visibleSupportProgressCard.ActualHeight);
+                Assert(supportProgressBounds.Left >= 0 && supportProgressBounds.Right <= window.ActualWidth,
+                    "Support progress card overflowed the window.");
+                Assert(supportProgressBounds.Bottom <= window.ActualHeight - 56,
+                    "Support progress card overlapped the footer.");
 
                 var dpi = VisualTreeHelper.GetDpi(window);
                 var bitmap = new RenderTargetBitmap(
@@ -340,5 +592,15 @@ internal static class Program
     {
         if (!condition)
             throw new InvalidOperationException(message);
+    }
+
+    private sealed class ProgressRecorder : IProgress<SupportBundleProgress>
+    {
+        public List<SupportBundleProgress> Items { get; } = new();
+
+        public void Report(SupportBundleProgress value)
+        {
+            Items.Add(value);
+        }
     }
 }

@@ -8,28 +8,79 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-r2-manifest
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
 
-      - name: Restore
-        run: dotnet restore
-
-      - name: Resolve release version
-        id: release_version
+      - name: Resolve release contract
+        id: release_contract
         shell: pwsh
         run: |
-          $tag = "${{ github.ref_name }}"
-          $number = $tag.TrimStart("v")
-          echo "tag=$tag" >> $env:GITHUB_OUTPUT
-          echo "number=$number" >> $env:GITHUB_OUTPUT
+          $ErrorActionPreference = 'Stop'
+          . ./scripts/ReleaseContract.ps1
+
+          $tag = '${{ github.ref_name }}'
+          $release = Resolve-ReleaseTag -Tag $tag
+
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to fetch origin/main for release validation.' }
+
+          $tagCommit = (git rev-parse ($tag + '^{commit}')).Trim()
+          if ($LASTEXITCODE -ne 0) { throw "Unable to resolve release tag commit for $tag." }
+          $mainCommit = (git rev-parse 'origin/main^{commit}').Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to resolve origin/main commit.' }
+          Assert-ReleaseCommitMatchesMain -TagCommit $tagCommit -MainCommit $mainCommit
+
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "tag=$($release.Tag)"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "number=$($release.Version)"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "is_prerelease=$($release.IsPrerelease.ToString().ToLowerInvariant())"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "tag_commit=$tagCommit"
+
+      - name: Restore release projects
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($project in @(
+            'ezgetBMCIP.csproj',
+            'ezgetBMCIP.Legacy/ezgetBMCIP.Legacy.csproj',
+            'tests/ezgetBMCIP.SmokeTests/ezgetBMCIP.SmokeTests.csproj')) {
+            dotnet restore $project
+            if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed: $project" }
+          }
+
+      - name: Test release contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          pwsh -NoProfile -File tests/release-workflow/ReleaseContract.Tests.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Release contract tests failed.' }
+
+      - name: Run smoke tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet run --project tests/ezgetBMCIP.SmokeTests/ezgetBMCIP.SmokeTests.csproj -c Release --no-restore
+          if ($LASTEXITCODE -ne 0) { throw 'Smoke tests failed.' }
+
+      - name: Build Legacy
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet build ezgetBMCIP.Legacy/ezgetBMCIP.Legacy.csproj -c Release --no-restore
+          if ($LASTEXITCODE -ne 0) { throw 'Legacy Release build failed.' }
 
       - name: Clean publish output
         shell: pwsh
@@ -39,99 +90,82 @@ jobs:
       # ── Full (self-contained) ─────────────────────────────────────
 
       - name: Build + Publish Full
-        run: >
-          dotnet publish -c Release -r win-x64
-          -p:PublishSingleFile=true
-          -p:SelfContained=true
-          -p:EnableCompressionInSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
-          -p:Version=${{ steps.release_version.outputs.number }}
-          -p:InformationalVersion=${{ steps.release_version.outputs.tag }}
-          -o publish/full
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish ezgetBMCIP.csproj -c Release -r win-x64 --no-restore `
+            -p:PublishSingleFile=true `
+            -p:SelfContained=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:Version=${{ steps.release_contract.outputs.number }} `
+            -p:InformationalVersion=${{ steps.release_contract.outputs.tag }} `
+            -o publish/full
+          if ($LASTEXITCODE -ne 0) { throw 'Full publish failed.' }
 
       # ── Lite (framework-dependent) ───────────────────────────────
 
       - name: Build + Publish Lite
-        run: >
-          dotnet publish -c Release -r win-x64
-          -p:PublishSingleFile=true
-          -p:SelfContained=false
-          -p:PublishReadyToRun=false
-          -p:EnableCompressionInSingleFile=false
-          -p:Version=${{ steps.release_version.outputs.number }}
-          -p:InformationalVersion=${{ steps.release_version.outputs.tag }}
-          -o publish/lite
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish ezgetBMCIP.csproj -c Release -r win-x64 --no-restore `
+            -p:PublishSingleFile=true `
+            -p:SelfContained=false `
+            -p:PublishReadyToRun=false `
+            -p:EnableCompressionInSingleFile=false `
+            -p:Version=${{ steps.release_contract.outputs.number }} `
+            -p:InformationalVersion=${{ steps.release_contract.outputs.tag }} `
+            -o publish/lite
+          if ($LASTEXITCODE -ne 0) { throw 'Lite publish failed.' }
 
       # ── Legacy (.NET Framework 4.6) ─────────────────────────────
 
       - name: Build + Publish Legacy
-        run: >
-          dotnet publish ezgetBMCIP.Legacy/ezgetBMCIP.Legacy.csproj -c Release
-          -p:Version=${{ steps.release_version.outputs.number }}
-          -p:InformationalVersion=${{ steps.release_version.outputs.tag }}
-          -o publish/ezgetBMCIP-legacy-net46
-
-      - name: Rename artifacts
         shell: pwsh
         run: |
-          $dotnet46Installer = "third_party/dotnetfx46/NDP46-KB3045557-x86-x64-AllOS-ENU.exe"
-          if (-not (Test-Path $dotnet46Installer)) {
+          $ErrorActionPreference = 'Stop'
+          dotnet publish ezgetBMCIP.Legacy/ezgetBMCIP.Legacy.csproj -c Release --no-restore `
+            -p:Version=${{ steps.release_contract.outputs.number }} `
+            -p:InformationalVersion=${{ steps.release_contract.outputs.tag }} `
+            -o publish/ezgetBMCIP-legacy-net46
+          if ($LASTEXITCODE -ne 0) { throw 'Legacy publish failed.' }
+
+      - name: Package and validate release archives
+        id: sizes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dotnet46Installer = 'third_party/dotnetfx46/NDP46-KB3045557-x86-x64-AllOS-ENU.exe'
+          $quickStartSource = 'docs/legacy-quickstart.txt'
+          if (-not (Test-Path -LiteralPath $dotnet46Installer -PathType Leaf)) {
             throw ".NET Framework 4.6 offline installer is missing: $dotnet46Installer"
+          }
+          if (-not (Test-Path -LiteralPath $quickStartSource -PathType Leaf)) {
+            throw "Legacy quick-start source is missing: $quickStartSource"
           }
 
           $unexpectedLiteFiles = Get-ChildItem publish/lite -File | Where-Object {
-            $_.Name -notin @("ezgetBMCIP.exe", "ezgetBMCIP.pdb")
+            $_.Name -notin @('ezgetBMCIP.exe', 'ezgetBMCIP.pdb')
           }
           if ($unexpectedLiteFiles.Count -gt 0) {
-            $names = ($unexpectedLiteFiles | ForEach-Object Name) -join ", "
+            $names = ($unexpectedLiteFiles | ForEach-Object Name) -join ', '
             throw "Lite publish is not a single-file app. Unexpected files: $names"
           }
 
-          $liteText = [System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes("publish/lite/ezgetBMCIP.exe"))
+          $liteText = [System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes('publish/lite/ezgetBMCIP.exe'))
           if ($liteText.Contains('"includedFrameworks"')) {
-            throw "Lite publish contains includedFrameworks. Clean/rebuild without reusing self-contained build output."
+            throw 'Lite publish contains includedFrameworks. Clean/rebuild without reusing self-contained build output.'
           }
           if (-not $liteText.Contains('"frameworks"')) {
-            throw "Lite publish does not contain framework-dependent runtime config."
+            throw 'Lite publish does not contain framework-dependent runtime config.'
           }
 
           Copy-Item publish/full/ezgetBMCIP.exe publish/ezgetBMCIP-full.exe
           Copy-Item publish/lite/ezgetBMCIP.exe publish/ezgetBMCIP-lite.exe
           Remove-Item publish/ezgetBMCIP-legacy-net46/*.pdb -ErrorAction SilentlyContinue
           Copy-Item $dotnet46Installer publish/ezgetBMCIP-legacy-net46/NDP46-KB3045557-x86-x64-AllOS-ENU.exe
-          $quickStart = @"
-          IPMI/BMC 直连助手 Legacy 使用教程
-
-          英文项目名：ezgetBMCIP
-
-          适用系统：
-          Windows 7 SP1 / Windows 8 / Windows 8.1
-
-          首次使用：
-          1. 如果本机还没有安装 .NET Framework 4.6，请先运行本文件夹里的：
-             NDP46-KB3045557-x86-x64-AllOS-ENU.exe
-
-          2. .NET Framework 4.6 安装完成后，建议重启电脑。
-
-          3. 回到本文件夹，右键运行：
-             ezgetBMCIP-legacy.exe
-
-          使用步骤：
-          1. 选择要连接服务器 IPMI/BMC 管理口的有线网卡。
-          2. 点击“开始”。
-          3. 按提示把网线插到服务器的 IPMI/BMC 专用管理口。
-          4. 等待工具分配 IP 并自动打开 BMC 管理页面。
-          5. BMC 操作完成后，回到工具点击“完成 / 退出”，等待网卡恢复原始配置。
-
-          注意事项：
-          - 这个工具只用于笔记本和 IPMI/BMC 管理口直连，不适合接入局域网使用。
-          - 运行期间会临时修改所选网卡的 IPv4 配置。
-          - 退出时会恢复所选网卡原来的 DHCP 或静态 IPv4、网关与 DNS 配置。
-          - 如果遇到问题，请点击工具左下角“日志”，把日志内容发给维护人员排查。
-          "@
-          $quickStart = ($quickStart -split "`r?`n" | ForEach-Object { $_ -replace "^          ", "" }) -join "`r`n"
-          [System.IO.File]::WriteAllText("publish/ezgetBMCIP-legacy-net46/使用教程.txt", $quickStart, [System.Text.UTF8Encoding]::new($true))
-          Compress-Archive -Path publish/ezgetBMCIP-legacy-net46/* -DestinationPath publish/ezgetBMCIP-legacy-net46.zip -Force
+          Copy-Item $quickStartSource publish/ezgetBMCIP-legacy-net46/使用教程.txt
 
           $liteSize = (Get-Item publish/ezgetBMCIP-lite.exe).Length
           if ($liteSize -lt 1000000) {
@@ -139,12 +173,51 @@ jobs:
           }
           Compress-Archive -Path publish/ezgetBMCIP-full.exe -DestinationPath publish/ezgetBMCIP-full.zip -Force
           Compress-Archive -Path publish/ezgetBMCIP-lite.exe -DestinationPath publish/ezgetBMCIP-lite.zip -Force
+          Compress-Archive -Path publish/ezgetBMCIP-legacy-net46/* -DestinationPath publish/ezgetBMCIP-legacy-net46.zip -Force
 
-      - name: Create GitHub Release
+          function Assert-ZipEntries {
+            param(
+              [Parameter(Mandatory)][string]$Path,
+              [Parameter(Mandatory)][string[]]$RequiredEntries
+            )
+            if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+              throw "Release archive is missing: $Path"
+            }
+            $archive = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath $Path).Path)
+            try {
+              $entries = @($archive.Entries | ForEach-Object FullName)
+              foreach ($required in $RequiredEntries) {
+                if ($entries -notcontains $required) {
+                  throw "Archive $Path is missing required entry: $required"
+                }
+              }
+            }
+            finally {
+              $archive.Dispose()
+            }
+          }
+
+          Assert-ZipEntries -Path publish/ezgetBMCIP-full.zip -RequiredEntries @('ezgetBMCIP-full.exe')
+          Assert-ZipEntries -Path publish/ezgetBMCIP-lite.zip -RequiredEntries @('ezgetBMCIP-lite.exe')
+          Assert-ZipEntries -Path publish/ezgetBMCIP-legacy-net46.zip -RequiredEntries @(
+            'ezgetBMCIP-legacy.exe',
+            'NDP46-KB3045557-x86-x64-AllOS-ENU.exe',
+            '使用教程.txt'
+          )
+
+          $fullSize = (Get-Item publish/ezgetBMCIP-full.zip).Length
+          $liteZipSize = (Get-Item publish/ezgetBMCIP-lite.zip).Length
+          $legacySize = (Get-Item publish/ezgetBMCIP-legacy-net46.zip).Length
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "full_size=$fullSize"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "lite_size=$liteZipSize"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "legacy_size=$legacySize"
+
+      - name: Create GitHub draft release
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ github.ref_name }}
-          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+          name: ${{ steps.release_contract.outputs.tag }}
+          draft: true
+          prerelease: ${{ steps.release_contract.outputs.is_prerelease == 'true' }}
           files: |
             publish/ezgetBMCIP-full.zip
             publish/ezgetBMCIP-lite.zip
@@ -160,79 +233,54 @@ jobs:
           aws configure set aws_secret_access_key "${{ secrets.R2_SECRET_ACCESS_KEY }}"
           aws configure set region auto
 
-      - name: Get file sizes
-        id: sizes
-        shell: pwsh
-        run: |
-          $fullSize = (Get-Item publish/ezgetBMCIP-full.zip).Length
-          $liteSize = (Get-Item publish/ezgetBMCIP-lite.zip).Length
-          $legacySize = (Get-Item publish/ezgetBMCIP-legacy-net46.zip).Length
-          echo "full_size=$fullSize" >> $env:GITHUB_OUTPUT
-          echo "lite_size=$liteSize" >> $env:GITHUB_OUTPUT
-          echo "legacy_size=$legacySize" >> $env:GITHUB_OUTPUT
-
-      - name: Download existing versions.json from R2
+      - name: Download and back up R2 versions manifest
+        id: r2_manifest
         shell: pwsh
         env:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
         run: |
+          $ErrorActionPreference = 'Stop'
+          . ./scripts/ReleaseContract.ps1
+          $tag = '${{ steps.release_contract.outputs.tag }}'
           $endpoint = "https://$env:R2_ACCOUNT_ID.r2.cloudflarestorage.com"
-          aws s3 cp "s3://$env:R2_BUCKET_NAME/versions.json" versions.json --endpoint-url $endpoint 2>$null
-          if (-not (Test-Path versions.json)) {
-            '[]' | Out-File -Encoding utf8 versions.json
-          }
-          exit 0
+          $manifestPath = Join-Path $env:RUNNER_TEMP "ezgetBMCIP-versions-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT.json"
+          $backupKey = "versions-history/$tag/$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT.json"
 
-      - name: Update versions.json
+          aws s3 cp "s3://$env:R2_BUCKET_NAME/versions.json" $manifestPath --endpoint-url $endpoint
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to download required R2 versions.json. Publishing was stopped without fallback.' }
+          $entries = @(Read-R2VersionManifest -Path $manifestPath)
+
+          aws s3 cp $manifestPath "s3://$env:R2_BUCKET_NAME/$backupKey" --endpoint-url $endpoint --content-type 'application/json'
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to back up the existing R2 versions.json. Publishing was stopped.' }
+
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "manifest_path=$manifestPath"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "backup_key=$backupKey"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "previous_count=$($entries.Count)"
+
+      - name: Merge release into R2 versions manifest
+        id: merged_manifest
         shell: pwsh
         env:
           R2_PUBLIC_DOMAIN: ${{ secrets.R2_PUBLIC_DOMAIN }}
         run: |
-          $tag = "${{ github.ref_name }}"
-          $date = (Get-Date -Format "yyyy-MM-dd")
-          $prerelease = "${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}" -eq "true"
-          $fullSize = ${{ steps.sizes.outputs.full_size }}
-          $liteSize = ${{ steps.sizes.outputs.lite_size }}
-          $legacySize = ${{ steps.sizes.outputs.legacy_size }}
-          $domain = $env:R2_PUBLIC_DOMAIN
-
-          $entry = [PSCustomObject]@{
-            version = $tag
-            date = $date
-            prerelease = $prerelease
-            assets = @(
-              @{
-                name = "ezgetBMCIP-full.zip"
-                url = "https://$domain/$tag/ezgetBMCIP-full.zip"
-                size = [long]$fullSize
-                desc = "完整打包，解压后运行，无需额外环境"
-              },
-              @{
-                name = "ezgetBMCIP-lite.zip"
-                url = "https://$domain/$tag/ezgetBMCIP-lite.zip"
-                size = [long]$liteSize
-                desc = "体积小，解压后运行，需要系统装有 .NET Desktop Runtime 8.0"
-              },
-              @{
-                name = "ezgetBMCIP-legacy-net46.zip"
-                url = "https://$domain/$tag/ezgetBMCIP-legacy-net46.zip"
-                size = [long]$legacySize
-                desc = "兼容 Windows 7 SP1 / Windows 8 / Windows 8.1，压缩包内含 .NET Framework 4.6 离线安装包，解压后运行"
-              }
-            )
+          $ErrorActionPreference = 'Stop'
+          . ./scripts/ReleaseContract.ps1
+          $release = [pscustomobject]@{
+            Tag = '${{ steps.release_contract.outputs.tag }}'
+            IsPrerelease = [System.Convert]::ToBoolean('${{ steps.release_contract.outputs.is_prerelease }}')
           }
-
-          $versions = Get-Content versions.json -Raw | ConvertFrom-Json
-          $list = [System.Collections.ArrayList]@($versions)
-          for ($i = $list.Count - 1; $i -ge 0; $i--) {
-            if ($list[$i].version -eq $tag) {
-              $list.RemoveAt($i)
-            }
-          }
-          $list.Insert(0, $entry)
-          ConvertTo-Json -InputObject $list -Depth 4 | Out-File -Encoding utf8 versions.json
-          Write-Host "Updated versions.json: $tag (entries: $($list.Count))"
+          $existing = @(Read-R2VersionManifest -Path '${{ steps.r2_manifest.outputs.manifest_path }}')
+          $merged = @(New-R2VersionManifest `
+            -ExistingEntries $existing `
+            -ReleaseInfo $release `
+            -ReleaseDate ([DateTime]::UtcNow.ToString('yyyy-MM-dd')) `
+            -PublicDomain $env:R2_PUBLIC_DOMAIN `
+            -FullSize ([Int64]'${{ steps.sizes.outputs.full_size }}') `
+            -LiteSize ([Int64]'${{ steps.sizes.outputs.lite_size }}') `
+            -LegacySize ([Int64]'${{ steps.sizes.outputs.legacy_size }}'))
+          Save-R2VersionManifest -Entries $merged -Path '${{ steps.r2_manifest.outputs.manifest_path }}'
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "entry_count=$($merged.Count)"
 
       - name: Upload release zip files to R2
         shell: pwsh
@@ -240,19 +288,81 @@ jobs:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
         run: |
-          $tag = "${{ github.ref_name }}"
+          $ErrorActionPreference = 'Stop'
+          $tag = '${{ steps.release_contract.outputs.tag }}'
           $endpoint = "https://$env:R2_ACCOUNT_ID.r2.cloudflarestorage.com"
-          aws s3 cp publish/ezgetBMCIP-full.zip "s3://$env:R2_BUCKET_NAME/$tag/ezgetBMCIP-full.zip" --endpoint-url $endpoint
-          aws s3 cp publish/ezgetBMCIP-lite.zip "s3://$env:R2_BUCKET_NAME/$tag/ezgetBMCIP-lite.zip" --endpoint-url $endpoint
-          aws s3 cp publish/ezgetBMCIP-legacy-net46.zip "s3://$env:R2_BUCKET_NAME/$tag/ezgetBMCIP-legacy-net46.zip" --endpoint-url $endpoint
-          Write-Host "Uploaded to R2 /$tag/"
+          foreach ($asset in @(
+            @{ LocalPath = 'publish/ezgetBMCIP-full.zip'; Name = 'ezgetBMCIP-full.zip' },
+            @{ LocalPath = 'publish/ezgetBMCIP-lite.zip'; Name = 'ezgetBMCIP-lite.zip' },
+            @{ LocalPath = 'publish/ezgetBMCIP-legacy-net46.zip'; Name = 'ezgetBMCIP-legacy-net46.zip' }
+          )) {
+            aws s3 cp $asset.LocalPath "s3://$env:R2_BUCKET_NAME/$tag/$($asset.Name)" --endpoint-url $endpoint
+            if ($LASTEXITCODE -ne 0) { throw "Unable to upload R2 asset: $($asset.Name)" }
+          }
 
-      - name: Upload versions.json to R2
+      - name: Verify R2 release zip files
         shell: pwsh
         env:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
         run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = '${{ steps.release_contract.outputs.tag }}'
           $endpoint = "https://$env:R2_ACCOUNT_ID.r2.cloudflarestorage.com"
-          aws s3 cp versions.json "s3://$env:R2_BUCKET_NAME/versions.json" --endpoint-url $endpoint --content-type "application/json"
-          Write-Host "Uploaded versions.json"
+          foreach ($asset in @(
+            @{ Name = 'ezgetBMCIP-full.zip'; ExpectedSize = [Int64]'${{ steps.sizes.outputs.full_size }}' },
+            @{ Name = 'ezgetBMCIP-lite.zip'; ExpectedSize = [Int64]'${{ steps.sizes.outputs.lite_size }}' },
+            @{ Name = 'ezgetBMCIP-legacy-net46.zip'; ExpectedSize = [Int64]'${{ steps.sizes.outputs.legacy_size }}' }
+          )) {
+            $actualSize = (aws s3api head-object --bucket $env:R2_BUCKET_NAME --key "$tag/$($asset.Name)" --endpoint-url $endpoint --query ContentLength --output text).Trim()
+            if ($LASTEXITCODE -ne 0) { throw "Unable to read R2 asset metadata: $($asset.Name)" }
+            if ([Int64]$actualSize -ne $asset.ExpectedSize) {
+              throw "R2 asset size mismatch for $($asset.Name): expected $($asset.ExpectedSize), got $actualSize"
+            }
+          }
+
+      - name: Upload and verify R2 versions manifest
+        shell: pwsh
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . ./scripts/ReleaseContract.ps1
+          $tag = '${{ steps.release_contract.outputs.tag }}'
+          $expectedPrerelease = [System.Convert]::ToBoolean('${{ steps.release_contract.outputs.is_prerelease }}')
+          $endpoint = "https://$env:R2_ACCOUNT_ID.r2.cloudflarestorage.com"
+          $manifestPath = '${{ steps.r2_manifest.outputs.manifest_path }}'
+
+          aws s3 cp $manifestPath "s3://$env:R2_BUCKET_NAME/versions.json" --endpoint-url $endpoint --content-type 'application/json'
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to upload the validated R2 versions.json.' }
+
+          $verifiedPath = Join-Path $env:RUNNER_TEMP "ezgetBMCIP-versions-verified-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT.json"
+          aws s3 cp "s3://$env:R2_BUCKET_NAME/versions.json" $verifiedPath --endpoint-url $endpoint
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to read back the uploaded R2 versions.json.' }
+          $verifiedEntries = @(Read-R2VersionManifest -Path $verifiedPath)
+          if ($verifiedEntries.Count -ne [Int32]'${{ steps.merged_manifest.outputs.entry_count }}') {
+            throw "R2 versions.json entry count changed during upload: expected ${{ steps.merged_manifest.outputs.entry_count }}, got $($verifiedEntries.Count)."
+          }
+          $releaseEntries = @($verifiedEntries | Where-Object { $_.version -eq $tag })
+          if ($releaseEntries.Count -ne 1) { throw "Uploaded R2 versions.json does not contain exactly one $tag entry." }
+          if ([bool]$releaseEntries[0].prerelease -ne $expectedPrerelease) {
+            throw "Uploaded R2 versions.json prerelease flag does not match $tag."
+          }
+
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = '${{ steps.release_contract.outputs.tag }}'
+          $arguments = @('release', 'edit', $tag, '--draft=false')
+          if ('${{ steps.release_contract.outputs.is_prerelease }}' -eq 'true') {
+            $arguments += '--prerelease'
+          }
+          else {
+            $arguments += '--prerelease=false'
+          }
+          gh @arguments
+          if ($LASTEXITCODE -ne 0) { throw "Unable to publish GitHub release $tag." }

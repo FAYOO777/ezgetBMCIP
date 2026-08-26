@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using System.Reflection;
 using System.Security.Principal;
 using System.Text;
 
@@ -12,29 +11,31 @@ internal static class DiagnosticReporter
     private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
     private static readonly Encoding Utf8WithBom = new UTF8Encoding(true);
     private static readonly Encoding NativeConsoleEncoding = CreateNativeConsoleEncoding();
-    private static readonly string ReportDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ezgetBMCIP");
-
-    public static string ReportFilePath => Path.Combine(ReportDir, "ezgetBMCIP-diagnostics.txt");
-
-    public static async Task<string> WriteReportAsync(MainViewModel viewModel)
+    public static async Task<string> WriteReportAsync(
+        MainViewModel viewModel,
+        string reportPath,
+        IProgress<SupportBundleProgress> progress)
     {
-        Directory.CreateDirectory(ReportDir);
+        var reportDirectory = Path.GetDirectoryName(reportPath);
+        if (string.IsNullOrWhiteSpace(reportDirectory))
+            throw new InvalidOperationException("Diagnostic report directory is unavailable.");
+        Directory.CreateDirectory(reportDirectory);
         var isAdmin = IsAdministrator();
 
         var sb = new StringBuilder();
         AppendHeader(sb, "ezgetBMCIP diagnostics");
         AppendLine(sb, "GeneratedAt", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss zzz"));
-        AppendLine(sb, "Version", GetVersionText());
+        AppendLine(sb, "Version", AppVersionText.Get());
         AppendLine(sb, "OS", Environment.OSVersion + " (" + (Environment.Is64BitOperatingSystem ? "x64" : "x86") + ")");
         AppendLine(sb, "Process", Environment.Is64BitProcess ? "x64" : "x86");
         AppendLine(sb, ".NET", Environment.Version.ToString());
         AppendLine(sb, "Administrator", isAdmin ? "true" : "false");
         AppendLine(sb, "LogPath", AppLogger.LogFilePath);
-        AppendLine(sb, "ReportPath", ReportFilePath);
+        AppendLine(sb, "ReportPath", reportPath);
         AppendLine(sb, "RecoverySnapshotPath", NetworkRecoveryStore.RecoveryFilePath);
         AppendLine(sb, "RecoverySnapshotExists", File.Exists(NetworkRecoveryStore.RecoveryFilePath) ? "true" : "false");
 
+        progress.Report(new SupportBundleProgress(10, "正在收集应用和网络状态..."));
         await AppendSummaryAsync(sb, viewModel, isAdmin);
 
         AppendHeader(sb, "App state");
@@ -77,19 +78,26 @@ internal static class DiagnosticReporter
             sb.AppendLine("Adapter enumeration failed: " + ex.Message);
         }
 
+        progress.Report(new SupportBundleProgress(20, "正在读取 IP 配置..."));
         await AppendCommandAsync(sb, "ipconfig /all", "ipconfig.exe", "/all");
+        progress.Report(new SupportBundleProgress(30, "正在读取路由表..."));
         await AppendCommandAsync(sb, "route print", "route.exe", "print");
+        progress.Report(new SupportBundleProgress(40, "正在检查 UDP 监听..."));
         await AppendCommandAsync(sb, "netstat UDP listeners", "netstat.exe", "-ano -p udp");
+        progress.Report(new SupportBundleProgress(50, "正在检查 DHCP 服务..."));
         await AppendPowerShellAsync(sb, "DHCP Client service", "Get-Service Dhcp | Format-List Name,Status,StartType,CanStop");
+        progress.Report(new SupportBundleProgress(60, "正在读取网卡配置..."));
         await AppendPowerShellAsync(sb, "Network adapter IP summary", "Get-NetIPConfiguration | Format-List InterfaceAlias,InterfaceDescription,IPv4Address,IPv4DefaultGateway,DNSServer");
+        progress.Report(new SupportBundleProgress(70, "正在检查 DHCP 端口占用..."));
         await AppendPowerShellAsync(sb, "UDP 67 owning process", "Get-NetUDPEndpoint -LocalPort 67 -ErrorAction SilentlyContinue | ForEach-Object { $p = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue; [PSCustomObject]@{LocalAddress=$_.LocalAddress;LocalPort=$_.LocalPort;OwningProcess=$_.OwningProcess;ProcessName=$p.ProcessName} } | Format-List");
 
         AppendHeader(sb, "Current session application log");
         sb.AppendLine(ReadCurrentSessionLogLines(300));
 
-        await File.WriteAllTextAsync(ReportFilePath, sb.ToString(), Utf8WithBom);
-        AppLogger.Log("Diagnostics report written: " + ReportFilePath);
-        return ReportFilePath;
+        progress.Report(new SupportBundleProgress(75, "正在写入诊断报告..."));
+        await File.WriteAllTextAsync(reportPath, sb.ToString(), Utf8WithBom);
+        AppLogger.Log("Diagnostics report written: " + reportPath);
+        return reportPath;
     }
 
     private static void AppendHeader(StringBuilder sb, string title)
@@ -267,11 +275,4 @@ internal static class DiagnosticReporter
         return principal.IsInRole(WindowsBuiltInRole.Administrator);
     }
 
-    private static string GetVersionText()
-    {
-        var version = Assembly.GetExecutingAssembly()
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
-            .InformationalVersion;
-        return string.IsNullOrWhiteSpace(version) ? "unknown" : version;
-    }
 }

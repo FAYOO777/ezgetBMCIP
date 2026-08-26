@@ -33,9 +33,17 @@ publish\
 - `publish/` 在 `.gitignore`，不会被 push
 - Lite 版每次发布生成新文件夹，历史保留便于版本对比
 - Legacy 版固定输出到 `publish\ezgetBMCIP-legacy-net46\`，每次覆盖；**部署时复制整个文件夹**（不是单个 exe）
-- 正式 Release 应上传 `ezgetBMCIP-full.exe`、`ezgetBMCIP-lite.exe`、`ezgetBMCIP-legacy-net46.zip`
+- 正式 Release 应上传 `ezgetBMCIP-full.zip`、`ezgetBMCIP-lite.zip`、`ezgetBMCIP-legacy-net46.zip`
 - 文件夹名格式（Lite）：`年-月-日-时-分`（`Get-Date -Format 'yyyy-M-d-H-m'`）
 - `README.txt` 记录本次改动摘要
+
+## GitHub Actions 发布规则
+
+- 只有 `vX.Y.Z` 才是正式发布；`vX.Y.Z-(test|beta|rc).N` 是预发布，其他 tag 会在构建前失败。
+- 发布 tag 必须指向 `origin/main` 的同一提交。先提交全部改动、推送 `main`，确认工作区干净和 `HEAD...origin/main` 为 `0 0` 后再创建 tag。
+- CI 按顺序 restore 主线、Legacy、SmokeTests，运行 SmokeTests 和 Legacy Release build，再生成 Full、Lite、Legacy 三个 ZIP；不要并行运行共享输出的构建。
+- R2 `versions.json` 是线上唯一索引。读取、解析、备份、资产上传或校验任一步失败都会停止；CI 不会使用仓库内的旧文件或空数组覆盖线上历史。
+- 每次发布会先创建 GitHub draft Release；确认 R2 三个 ZIP 与索引均已校验后才公开 Release。
 
 ## 自定义网段规则
 
@@ -82,18 +90,20 @@ dotnet build -c Release .\ezgetBMCIP.Legacy\ezgetBMCIP.Legacy.csproj
 |---|--------|----------|------|--------|----------|
 | 1 | 应用能正常启动（UAC 提权） | ✅ 实机通过 | 默认兼容 | ✅ 实机通过 | ☐ |
 | 2 | 网卡列表正确显示 | ✅ 实机通过 | 默认兼容 | ✅ 实机通过 | ☐ |
-| 3 | 可修改私有网段 IP 配置，公网段会被拦截 | ✅ 实机通过 | 默认兼容 | ✅ 实机通过 | ☐ |
-| 4 | 点击"开始"后网卡切换到静态 IP | ✅ 实机通过 | 默认兼容 | ✅ 实机通过 | ☐ |
-| 5 | DHCP 服务正常启动并分配地址 | ✅ 实机通过 | 默认兼容 | ✅ 实机通过 | ☐ |
-| 6 | DHCP 分配后确认 HTTPS/HTTP 端口再打开浏览器 | ☐ | ☐ | ☐ | ☐ |
-| 7 | 原 DHCP 网卡退出后恢复 DHCP 与原 DNS 模式 | ☐ | ☐ | ☐ | ☐ |
-| 8 | 原静态网卡退出后恢复全部 IPv4、网关与 DNS | ☐ | ☐ | ☐ | ☐ |
-| 9 | 退出后清理工具 DHCP lease/option 缓存 | ☐ | ☐ | ☐ | ☐ |
-| 10 | 强制结束主进程后守护进程自动恢复网卡 | ☐ | ☐ | ☐ | ☐ |
-| 11 | 主程序与守护同时终止后，下次启动优先恢复 | ☐ | ☐ | ☐ | ☐ |
-| 12 | 管理页面延迟启动时可重新检测和手动打开 | ☐ | ☐ | ☐ | ☐ |
-| 13 | 清理失败时错误信息保持可见且恢复记录保留 | ☐ | ☐ | ☐ | ☐ |
-| 14 | 多次关闭窗口不绕过清理流程 | ☐ | ☐ | ☐ | ☐ |
+| 3 | 使用前风险告知默认不同意；取消、关闭、Esc 均不进入网卡选择 | ☐ | ☐ | ☐ | ☐ |
+| 4 | 点击“开始”后的网络修改告知显示临时本机 IP、BMC 临时 DHCP 地址、仅恢复本机网卡的边界；取消不修改网卡 | ☐ | ☐ | ☐ | ☐ |
+| 5 | 可修改私有网段 IP 配置，公网段会被拦截 | ✅ 实机通过 | 默认兼容 | ✅ 实机通过 | ☐ |
+| 6 | 同意网络修改告知后网卡切换到静态 IP | ✅ 实机通过 | 默认兼容 | ✅ 实机通过 | ☐ |
+| 7 | DHCP 服务正常启动并分配地址 | ✅ 实机通过 | 默认兼容 | ✅ 实机通过 | ☐ |
+| 8 | DHCP 分配后确认 HTTPS/HTTP 端口再打开浏览器 | ☐ | ☐ | ☐ | ☐ |
+| 9 | 原 DHCP 网卡退出后恢复 DHCP 与原 DNS 模式；允许重新获得不同租约 | ☐ | ☐ | ☐ | ☐ |
+| 10 | 原静态网卡退出后恢复已记录的 IPv4、网关与 DNS | ☐ | ☐ | ☐ | ☐ |
+| 11 | 退出后清理工具 DHCP lease/option 缓存 | ☐ | ☐ | ☐ | ☐ |
+| 12 | 强制结束主进程后守护进程自动恢复本机所选网卡（不恢复 BMC） | ☐ | ☐ | ☐ | ☐ |
+| 13 | 主程序与守护同时终止后，下次启动工具优先恢复本机网卡 | ☐ | ☐ | ☐ | ☐ |
+| 14 | 管理页面延迟启动时可重新检测和手动打开 | ☐ | ☐ | ☐ | ☐ |
+| 15 | 清理失败时错误信息保持可见且恢复记录保留 | ☐ | ☐ | ☐ | ☐ |
+| 16 | 多次关闭窗口不绕过清理流程 | ☐ | ☐ | ☐ | ☐ |
 
 **当前基线：** 2026-06-23 RC 已在 Win10/11 主线 Lite 完成回归；Legacy 已在 Windows 7 SP1 实体机和 Windows 8.1 实体机通过完整链路验证。Windows 8 因占用率低，不作为阻塞测试项；按同一 Legacy 技术路径默认兼容。
 
@@ -134,14 +144,13 @@ Legacy 版运行时日志写入 `%TEMP%\ezgetBMCIP.log`。
 
 注：仅 `MainViewModel` 的诊断日志带有 `[Legacy]` 前缀；`App.xaml.cs` 的启动日志无此前缀。
 
-### 收集日志
+### 收集支持包
 
-测试失败时，请收集：
-1. `%TEMP%\ezgetBMCIP.log` 文件
-2. 操作系统版本（`winver`）
-3. 已安装的 .NET Framework 版本
-4. 网卡名称和类型
-5. 操作步骤和观察到的现象
+将 Legacy 窗口置于前台后按 `Alt+L`，工具会在
+`%LOCALAPPDATA%\ezgetBMCIP\Support` 生成带时间戳的 ZIP 并打开该文件夹。ZIP 包含原始
+`ezgetBMCIP.log` 和完整 `diagnostics.txt`；诊断中会含网卡名称、MAC、IP、路由及 DHCP 状态。
+
+同时记录操作系统版本（`winver`）、已安装的 .NET Framework 版本、网卡名称和操作步骤/现象。
 
 ## Win10/11 现代版运行时诊断
 
@@ -179,14 +188,13 @@ Legacy 版运行时日志写入 `%TEMP%\ezgetBMCIP.log`。
 | 清理失败 | `Cleanup failed: <error>` |
 | Core 层操作 | `[Core] <PowerShell/netsh output>` |
 
-### 收集日志
+### 收集支持包
 
-测试失败时，请收集：
-1. `%LOCALAPPDATA%\ezgetBMCIP\ezgetBMCIP.log` 文件
-2. 操作系统版本（`winver`）
-3. .NET 运行时版本
-4. 网卡名称和类型
-5. 操作步骤和观察到的现象
+将现代版窗口置于前台后按 `Alt+L`，工具会在
+`%LOCALAPPDATA%\ezgetBMCIP\Support` 生成带时间戳的 ZIP 并打开该文件夹。ZIP 包含原始
+`ezgetBMCIP.log` 和完整 `diagnostics.txt`；诊断中会含网卡名称、MAC、IP、路由及 DHCP 状态。
+
+同时记录操作系统版本（`winver`）、.NET 运行时版本、网卡名称和操作步骤/现象。
 
 ## Legacy VM 测试记录模板
 
@@ -220,9 +228,9 @@ Legacy 版运行时日志写入 `%TEMP%\ezgetBMCIP.log`。
 | 等待 BMC | BMC 通过 DHCP 获取 .100 地址 | | ☐ |
 | BMC IP 显示 | IP 地址显示正确 | | ☐ |
 | 打开 BMC | 端口确认后按 HTTPS/HTTP 实际结果打开管理页面 | | ☐ |
-| 原 DHCP 配置恢复 | DHCP、DNS 模式和工具临时地址均恢复 | | ☐ |
-| 原静态配置恢复 | IPv4、网关、DNS 均恢复为使用工具前的值 | | ☐ |
-| 异常退出恢复 | 强杀主进程后守护恢复；同时终止后由下次启动恢复 | | ☐ |
+| 原 DHCP 配置恢复 | DHCP、DNS 模式和工具临时地址均恢复；允许重新获得不同租约 | | ☐ |
+| 原静态配置恢复 | 本机已记录的 IPv4、网关、DNS 均恢复 | | ☐ |
+| 异常退出恢复 | 强杀主进程后守护恢复本机网卡；同时终止后由下次启动工具恢复 | | ☐ |
 | 清理 DHCP lease/option 缓存 | `registryLeaseStillPresent=False` | | ☐ |
 | 接回交换机 | 获取正常局域网 DHCP 地址 | | ☐ |
 | 清理失败保持可见 | 失败时错误信息保持显示 | | ☐ |

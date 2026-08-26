@@ -6,12 +6,20 @@
     <LangVersion>8</LangVersion>
     <RootNamespace>EzGetBmcIp.Legacy</RootNamespace>
     <AssemblyName>ezgetBMCIP-legacy</AssemblyName>
-    <Version>1.3.5</Version>
+    <Version>1.5.0</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\ezgetBMCIP.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <Resource Include="..\ezgetBMCIP.ico" Link="ezgetBMCIP.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\ConsentNotice.cs" Link="ConsentNotice.cs" />
+    <Compile Include="..\SupportBundleCollector.cs" Link="SupportBundleCollector.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ezgetBMCIP.Core.Legacy\ezgetBMCIP.Core.Legacy.csproj" />

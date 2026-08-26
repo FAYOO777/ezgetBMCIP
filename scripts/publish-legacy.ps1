@@ -38,37 +38,12 @@ if (-not (Test-Path $dotnet46Installer)) {
 }
 Copy-Item $dotnet46Installer "$publishDir\NDP46-KB3045557-x86-x64-AllOS-ENU.exe" -Force
 
-$quickStart = @"
-IPMI/BMC 直连助手 Legacy 使用教程
-
-英文项目名：ezgetBMCIP
-
-适用系统：
-Windows 7 SP1 / Windows 8 / Windows 8.1
-
-首次使用：
-1. 如果本机还没有安装 .NET Framework 4.6，请先运行本文件夹里的：
-   NDP46-KB3045557-x86-x64-AllOS-ENU.exe
-
-2. .NET Framework 4.6 安装完成后，建议重启电脑。
-
-3. 回到本文件夹，右键运行：
-   ezgetBMCIP-legacy.exe
-
-使用步骤：
-1. 选择要连接服务器 IPMI/BMC 管理口的有线网卡。
-2. 点击“开始”。
-3. 按提示把网线插到服务器的 IPMI/BMC 专用管理口。
-4. 等待工具分配 IP 并自动打开 BMC 管理页面。
-5. BMC 操作完成后，回到工具点击“完成 / 退出”，等待网卡恢复原始配置。
-
-注意事项：
-- 这个工具只用于笔记本和 IPMI/BMC 管理口直连，不适合接入局域网使用。
-- 运行期间会临时修改所选网卡的 IPv4 配置。
-- 退出时会恢复所选网卡原来的 DHCP 或静态 IPv4、网关与 DNS 配置。
-- 如果遇到问题，请点击工具左下角“日志”，把日志内容发给维护人员排查。
-"@
-[System.IO.File]::WriteAllText("$publishDir\使用教程.txt", $quickStart, [System.Text.UTF8Encoding]::new($true))
+$repositoryRoot = Split-Path -Parent $PSScriptRoot
+$quickStartSource = Join-Path $repositoryRoot 'docs\legacy-quickstart.txt'
+if (-not (Test-Path -LiteralPath $quickStartSource -PathType Leaf)) {
+  throw "Legacy quick-start source is missing: $quickStartSource"
+}
+Copy-Item -LiteralPath $quickStartSource -Destination "$publishDir\使用教程.txt" -Force
 
 # Generate README
 $psi = New-Object System.Diagnostics.ProcessStartInfo

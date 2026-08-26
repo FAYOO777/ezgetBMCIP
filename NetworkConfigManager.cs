@@ -33,7 +33,9 @@ internal static class NetworkConfigManager
         }
 
         var props = ni.GetIPProperties();
-        var dhcpEnabled = props.GetIPv4Properties()?.IsDhcpEnabled ?? false;
+        var fallbackDhcpEnabled = props.GetIPv4Properties()?.IsDhcpEnabled ?? false;
+        var dhcpEnabled = GetDhcpEnabled(adapter, fallbackDhcpEnabled, out var dhcpModeSource);
+        Logger?.Invoke("IPv4 mode captured from " + dhcpModeSource + ": dhcp=" + dhcpEnabled);
         var config = new AdapterOriginalConfig
         {
             DhcpEnabled = dhcpEnabled,
@@ -124,13 +126,8 @@ internal static class NetworkConfigManager
         }
         else if (origConfig.StaticAddresses.Count > 0)
         {
-            var primary = origConfig.StaticAddresses[0];
-            var gatewayArg = origConfig.Gateways.Count > 0 ? origConfig.Gateways[0].ToString() : "none";
-            var gatewayMetricArg = origConfig.Gateways.Count > 0 && origConfig.GatewayMetrics.Count > 0
-                ? " " + origConfig.GatewayMetrics[0]
-                : string.Empty;
             await RunNetshAsync(
-                $"interface ipv4 set address name=\"{adapter.Name}\" static {primary.Address} {primary.Mask} {gatewayArg}{gatewayMetricArg}",
+                BuildStaticAddressRestoreCommand(adapter, origConfig),
                 cancellationToken);
 
             for (var i = 1; i < origConfig.StaticAddresses.Count; i++)
@@ -155,6 +152,11 @@ internal static class NetworkConfigManager
             await RunNetshAsync(
                 $"interface ipv4 set address name=\"{adapter.Name}\" source=static",
                 cancellationToken);
+        }
+
+        if (!origConfig.DhcpEnabled)
+        {
+            RestoreGatewayMetrics(adapter, origConfig.GatewayMetrics);
         }
 
         if (origConfig.DnsServersFromDhcp || origConfig.DnsServers.Count == 0)
@@ -220,9 +222,7 @@ internal static class NetworkConfigManager
         return await Task.Run(() =>
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var ni = FindNetworkInterface(adapter)
-                ?? throw new InvalidOperationException("Selected adapter was not found during DHCP verification.");
-            return ni.GetIPProperties().GetIPv4Properties()?.IsDhcpEnabled ?? false;
+            return CaptureOriginalConfig(adapter).DhcpEnabled;
         }, cancellationToken);
     }
 
@@ -253,9 +253,10 @@ internal static class NetworkConfigManager
                 expected.StaticAddresses.Select(a => a.Address));
         var gatewayAddressesMatch = expected.DhcpEnabled
             || IpSetEquals(current.Gateways, expected.Gateways);
-        var gatewayMetricsMatch = expected.DhcpEnabled
-            || expected.GatewayMetrics.Count == 0
-            || current.GatewayMetrics.SequenceEqual(expected.GatewayMetrics);
+        var gatewayMetricsMatch = GatewayMetricsMatch(
+            current.GatewayMetrics,
+            expected.GatewayMetrics,
+            expected.DhcpEnabled);
         var gatewaysMatch = gatewayAddressesMatch && gatewayMetricsMatch;
         var dnsModeMatches = current.DnsServersFromDhcp == expected.DnsServersFromDhcp;
         var dnsServersMatch = expected.DnsServersFromDhcp
@@ -265,6 +266,8 @@ internal static class NetworkConfigManager
         var details =
             $"success={success}, mode={current.DhcpEnabled}/{expected.DhcpEnabled}, " +
             $"addresses={addressesMatch}, gateways={gatewayAddressesMatch}, gatewayMetrics={gatewayMetricsMatch}, " +
+            $"gatewayMetricsCurrent=[{string.Join(",", current.GatewayMetrics)}], " +
+            $"gatewayMetricsExpected=[{string.Join(",", expected.GatewayMetrics)}], " +
             $"dnsMode={current.DnsServersFromDhcp}/{expected.DnsServersFromDhcp}, dns={dnsServersMatch}, " +
             $"toolStaticRemoved={toolStaticRemoved}, toolLeaseRemoved={toolLeaseRemoved}";
 
@@ -352,12 +355,12 @@ internal static class NetworkConfigManager
             "if(-not $cfg){$nic=Get-CimInstance Win32_NetworkAdapter -ErrorAction SilentlyContinue | Where-Object { $_.NetConnectionID -eq $name }; if($nic){$cfg=Get-CimInstance Win32_NetworkAdapterConfiguration -ErrorAction SilentlyContinue | Where-Object { $_.Index -eq $nic.Index }}}; " +
             "try { Set-NetIPInterface -InterfaceAlias $name -AddressFamily IPv4 -Dhcp Enabled -ErrorAction Stop; $out+='Set-NetIPInterface OK' } catch { $out+='Set-NetIPInterface ERR: ' + $_.Exception.Message }; " +
             "try { Set-DnsClientServerAddress -InterfaceAlias $name -ResetServerAddresses -ErrorAction Stop; $out+='Set-DnsClientServerAddress OK' } catch { $out+='Set-DnsClientServerAddress ERR: ' + $_.Exception.Message }; " +
-            "if($cfg) { " +
+            "if($cfg) { $guid=$cfg.SettingID; " +
             "try { Invoke-CimMethod -InputObject $cfg -MethodName EnableDHCP -ErrorAction Stop | Out-Null; $out+='EnableDHCP OK' } catch { $out+='EnableDHCP ERR: ' + $_.Exception.Message }; " +
             "try { Invoke-CimMethod -InputObject $cfg -MethodName SetDNSServerSearchOrder -Arguments @{DNSServerSearchOrder=$null} -ErrorAction Stop | Out-Null; $out+='SetDNSServerSearchOrder OK' } catch { $out+='SetDNSServerSearchOrder ERR: ' + $_.Exception.Message } " +
             "} else { $out+='WMI config not found' }; " +
             "$base='HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\'; " +
-            "$trimmed=$guid.Trim('{}'); $path=@($base+$guid,$base+'{'+$trimmed+'}',$base+$trimmed) | Where-Object { Test-Path $_ } | Select-Object -First 1; " +
+            "$trimmed=$guid.Trim('{}'); $path=@($base+$guid,$base+'{'+$trimmed+'}',$base+$trimmed) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1; " +
             "if($path -and (Test-Path -LiteralPath $path)) { " +
             "try { Set-ItemProperty -Path $path -Name EnableDHCP -Type DWord -Value 1 -ErrorAction Stop; $out+='REG EnableDHCP OK' } catch { $out+='REG EnableDHCP ERR: ' + $_.Exception.Message }; " +
             "try { Set-ItemProperty -Path $path -Name IPAddress -Value @('0.0.0.0') -ErrorAction Stop; $out+='REG IPAddress OK' } catch { $out+='REG IPAddress ERR: ' + $_.Exception.Message }; " +
@@ -400,9 +403,9 @@ internal static class NetworkConfigManager
             "try { Set-DnsClientServerAddress -InterfaceAlias $name -ResetServerAddresses -ErrorAction Stop; $out+='Set-DnsClientServerAddress OK' } catch { $out+='Set-DnsClientServerAddress ERR: ' + $_.Exception.Message }; " +
             "$cfg=Get-CimInstance Win32_NetworkAdapterConfiguration -ErrorAction SilentlyContinue | Where-Object { $_.SettingID -eq $guid }; " +
             "if(-not $cfg){$nic=Get-CimInstance Win32_NetworkAdapter -ErrorAction SilentlyContinue | Where-Object { $_.NetConnectionID -eq $name }; if($nic){$cfg=Get-CimInstance Win32_NetworkAdapterConfiguration -ErrorAction SilentlyContinue | Where-Object { $_.Index -eq $nic.Index }}}; " +
-            "if($cfg) { try { Invoke-CimMethod -InputObject $cfg -MethodName SetDNSServerSearchOrder -Arguments @{DNSServerSearchOrder=$null} -ErrorAction Stop | Out-Null; $out+='SetDNSServerSearchOrder OK' } catch { $out+='SetDNSServerSearchOrder ERR: ' + $_.Exception.Message } } else { $out+='WMI config not found' }; " +
+            "if($cfg) { $guid=$cfg.SettingID; try { Invoke-CimMethod -InputObject $cfg -MethodName SetDNSServerSearchOrder -Arguments @{DNSServerSearchOrder=$null} -ErrorAction Stop | Out-Null; $out+='SetDNSServerSearchOrder OK' } catch { $out+='SetDNSServerSearchOrder ERR: ' + $_.Exception.Message } } else { $out+='WMI config not found' }; " +
             "$base='HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\'; " +
-            "$trimmed=$guid.Trim('{}'); $path=@($base+$guid,$base+'{'+$trimmed+'}',$base+$trimmed) | Where-Object { Test-Path $_ } | Select-Object -First 1; " +
+            "$trimmed=$guid.Trim('{}'); $path=@($base+$guid,$base+'{'+$trimmed+'}',$base+$trimmed) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1; " +
             "if($path -and (Test-Path -LiteralPath $path)) { try { Set-ItemProperty -Path $path -Name NameServer -Value '' -ErrorAction Stop; $out+='REG NameServer OK' } catch { $out+='REG NameServer ERR: ' + $_.Exception.Message } } else { $out+='REG path not found' }; " +
             "$out";
     }
@@ -436,17 +439,38 @@ internal static class NetworkConfigManager
         }
     }
 
-    private static RegistryKey? OpenAdapterRegistryKey(WiredAdapter adapter)
+    private static bool GetDhcpEnabled(WiredAdapter adapter, bool fallback, out string source)
+    {
+        try
+        {
+            using var key = OpenAdapterRegistryKey(adapter);
+            if (key is not null)
+            {
+                var value = TryReadDhcpEnabled(key.GetValue("EnableDHCP"));
+                if (value.HasValue)
+                {
+                    source = "registry EnableDHCP";
+                    return value.Value;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger?.Invoke("DHCP mode detection failed: " + ex.Message);
+        }
+
+        source = "NetworkInterface fallback";
+        return fallback;
+    }
+
+    private static RegistryKey? OpenAdapterRegistryKey(WiredAdapter adapter, bool writable = false)
     {
         const string basePath = @"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\";
-        var trimmed = TrimBraces(adapter.Id);
-        var names = new[] { adapter.Id, trimmed, "{" + trimmed + "}" }
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Distinct(StringComparer.OrdinalIgnoreCase);
+        var names = GetAdapterRegistryKeyNames(adapter);
 
         foreach (var name in names)
         {
-            var key = Registry.LocalMachine.OpenSubKey(basePath + name, writable: false);
+            var key = Registry.LocalMachine.OpenSubKey(basePath + name, writable);
             if (key is not null)
             {
                 return key;
@@ -454,6 +478,33 @@ internal static class NetworkConfigManager
         }
 
         return null;
+    }
+
+    private static IEnumerable<string> GetAdapterRegistryKeyNames(WiredAdapter adapter)
+    {
+        var resolvedId = FindNetworkInterface(adapter)?.Id;
+        return new[] { adapter.Id, resolvedId }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .SelectMany(value =>
+            {
+                var raw = value ?? string.Empty;
+                var trimmed = TrimBraces(raw);
+                return new[] { raw, trimmed, "{" + trimmed + "}" };
+            })
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+    }
+
+    internal static bool? TryReadDhcpEnabled(object? value)
+    {
+        return value switch
+        {
+            int number => number != 0,
+            long number => number != 0,
+            uint number => number != 0,
+            string text when int.TryParse(text, out var number) => number != 0,
+            _ => null
+        };
     }
 
     private static string RegistryValueToText(object? value)
@@ -485,6 +536,62 @@ internal static class NetworkConfigManager
         {
             Logger?.Invoke("Gateway metric detection failed: " + ex.Message);
             return Array.Empty<int>();
+        }
+    }
+
+    internal static string BuildStaticAddressRestoreCommand(
+        WiredAdapter adapter,
+        AdapterOriginalConfig originalConfig)
+    {
+        var primary = originalConfig.StaticAddresses[0];
+        var command =
+            $"interface ipv4 set address name=\"{adapter.Name}\" source=static " +
+            $"address={primary.Address} mask={primary.Mask}";
+
+        if (originalConfig.Gateways.Count == 0)
+        {
+            return command + " gateway=none";
+        }
+
+        command += " gateway=" + originalConfig.Gateways[0];
+        if (originalConfig.GatewayMetrics.Count > 0)
+        {
+            command += " gwmetric=" + originalConfig.GatewayMetrics[0].ToString(CultureInfo.InvariantCulture);
+        }
+
+        return command;
+    }
+
+    internal static bool GatewayMetricsMatch(
+        IReadOnlyCollection<int> current,
+        IReadOnlyCollection<int> expected,
+        bool expectedDhcpEnabled)
+    {
+        return expectedDhcpEnabled
+            || expected.Count == 0
+            || current.SequenceEqual(expected);
+    }
+
+    private static void RestoreGatewayMetrics(WiredAdapter adapter, IReadOnlyCollection<int> gatewayMetrics)
+    {
+        try
+        {
+            using var key = OpenAdapterRegistryKey(adapter, writable: true);
+            if (key is null)
+            {
+                Logger?.Invoke("Gateway metric restore skipped because the adapter registry key was not found.");
+                return;
+            }
+
+            var values = gatewayMetrics
+                .Select(metric => metric.ToString(CultureInfo.InvariantCulture))
+                .ToArray();
+            key.SetValue("DefaultGatewayMetric", values, RegistryValueKind.MultiString);
+            Logger?.Invoke("Gateway metric restore persisted: [" + string.Join(",", values) + "]");
+        }
+        catch (Exception ex)
+        {
+            Logger?.Invoke("Gateway metric restore failed: " + ex.Message);
         }
     }
 

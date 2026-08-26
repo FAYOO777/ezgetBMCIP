@@ -1,0 +1,94 @@
+<ui:FluentWindow x:Class="EzGetBmcIp.ConsentDialog"
+                 x:ClassModifier="internal"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 Title="{Binding Title}"
+                 Width="650"
+                 MinWidth="560"
+                 MaxHeight="720"
+                 SizeToContent="Height"
+                 WindowStartupLocation="CenterOwner"
+                 ResizeMode="NoResize"
+                 ShowInTaskbar="False"
+                 ExtendsContentIntoTitleBar="True"
+                 WindowBackdropType="Mica"
+                 PreviewKeyDown="Dialog_PreviewKeyDown">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar Grid.Row="0" Title="{Binding Title}" />
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="28,18,28,24">
+                <TextBlock Text="{Binding Title}"
+                           FontSize="21"
+                           FontWeight="Bold"
+                           Foreground="{StaticResource BrandPrimaryBrush}"
+                           Margin="0,0,0,8" />
+                <TextBlock Text="{Binding Intro}"
+                           FontSize="13"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Margin="0,0,0,18" />
+
+                <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16"
+                        Margin="0,0,0,18">
+                    <ItemsControl ItemsSource="{Binding Items}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="18" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="•"
+                                               FontSize="16"
+                                               FontWeight="Bold"
+                                               Foreground="{StaticResource BrandPrimaryBrush}" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding}"
+                                               FontSize="13"
+                                               TextWrapping="Wrap"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Border>
+
+                <CheckBox x:Name="AcknowledgementCheckBox"
+                          Content="{Binding AcknowledgementText}"
+                          FontSize="13"
+                          FontWeight="SemiBold"
+                          VerticalContentAlignment="Center"
+                          Checked="AcknowledgementChanged"
+                          Unchecked="AcknowledgementChanged"
+                          Margin="0,0,0,18" />
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <ui:Button Content="取消 / 不同意"
+                               Appearance="Secondary"
+                               Width="118"
+                               Height="36"
+                               Margin="0,0,10,0"
+                               Click="Cancel_Click" />
+                    <ui:Button x:Name="AgreeButton"
+                               Content="{Binding ConfirmButtonText}"
+                               Style="{StaticResource BrandPrimaryButtonStyle}"
+                               Width="118"
+                               Height="36"
+                               IsEnabled="False"
+                               Click="Agree_Click" />
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</ui:FluentWindow>

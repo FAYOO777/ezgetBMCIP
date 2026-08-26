@@ -7,7 +7,8 @@
         MinWidth="660" MinHeight="500"
         WindowStartupLocation="CenterScreen"
         ResizeMode="CanMinimize"
-        Background="#F3F4F6">
+        Background="#F3F4F6"
+        PreviewKeyDown="Window_PreviewKeyDown">
     <Window.Resources>
         <Style x:Key="CardBorder" TargetType="Border">
             <Setter Property="Background" Value="#FFFFFF" />
@@ -68,6 +69,31 @@
             </Grid>
         </Border>
 
+        <!-- Preparation card -->
+        <Border Grid.Row="1" Style="{StaticResource CardBorder}"
+                Visibility="{Binding ShowPreparation, Converter={StaticResource BoolToVis}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                    <TextBlock Text="使用前确认" FontSize="16" FontWeight="Bold"
+                               Foreground="#005A9E" Margin="0,0,0,10" />
+                    <TextBlock Text="1. 笔记本有线网卡直连服务器 IPMI/BMC 管理口。"
+                               FontSize="13" Foreground="#555" Margin="0,0,0,8" TextWrapping="Wrap" />
+                    <TextBlock Text="2. 此工具会临时修改所选网卡；退出时仅恢复本机网卡，不会还原 BMC 网络设置。"
+                               FontSize="13" Foreground="#555" Margin="0,0,0,8" TextWrapping="Wrap" />
+                    <TextBlock Text="3. 仅适用于直连场景，不适合在已有局域网内使用。"
+                               FontSize="13" Foreground="#555" TextWrapping="Wrap" />
+                </StackPanel>
+
+                <Button Grid.Column="1" Content="下一步" Command="{Binding GoNextCommand}"
+                        Width="104" Height="34" FontWeight="Bold" VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+
         <!-- Adapter / Start card -->
         <Border Grid.Row="1" Style="{StaticResource CardBorder}"
                 Visibility="{Binding ShowAdapterSelection, Converter={StaticResource BoolToVis}}">
@@ -94,8 +120,12 @@
                 <Border Background="#F8FAFC" BorderBrush="#E1E5EA" BorderThickness="1"
                         CornerRadius="6" Padding="12">
                     <StackPanel>
-                        <TextBlock Text="自定义网段（可选）" FontSize="13" FontWeight="Bold"
-                                   Foreground="#333" Margin="0,0,0,8" />
+                        <TextBlock Text="自定义本机网卡 IP（可选）" FontSize="13" FontWeight="Bold"
+                                   Foreground="#333" Margin="0,0,0,4" />
+                        <TextBlock Text="下方 IP 会临时设置到所选网卡；BMC 不会被主动修改。"
+                                   FontSize="12" Foreground="#777" TextWrapping="Wrap" Margin="0,0,0,6" />
+                        <TextBlock Text="本机网卡临时 IPv4 地址"
+                                   FontSize="12" FontWeight="Bold" Foreground="#555" Margin="0,0,0,4" />
                         <StackPanel Orientation="Horizontal">
                             <TextBox Text="{Binding SubnetConfig.Octet1Text, UpdateSourceTrigger=LostFocus}"
                                      Width="42" TextAlignment="Center" MaxLength="3" />
@@ -110,8 +140,10 @@
                                      Width="42" TextAlignment="Center" MaxLength="3" />
                             <TextBlock Text="/24" VerticalAlignment="Center" Margin="10,0,14,0"
                                        Foreground="#555" FontSize="13" />
-                            <TextBlock Text="BMC 固定分配 .100" VerticalAlignment="Center"
-                                       FontSize="12" Foreground="#777" />
+                            <TextBlock VerticalAlignment="Center" FontSize="12" Foreground="#777">
+                                <Run Text="BMC 经 DHCP 预期：" />
+                                <Run Text="{Binding SubnetConfig.PoolDisplay}" />
+                            </TextBlock>
                         </StackPanel>
                         <TextBlock Text="仅支持私有网段：10.x.x.x / 172.16-31.x.x / 192.168.x.x"
                                    FontSize="12" Foreground="#777" Margin="0,8,0,0" />
@@ -188,11 +220,58 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <Button Grid.Column="0" Content="日志" Click="OpenLog_Click" Width="72" Height="32" />
-            <TextBlock Grid.Column="1" Text="退出前会停止 DHCP 服务，并恢复所选网卡的原始配置。"
+            <TextBlock Grid.Column="0" Text="{Binding VersionText}" Foreground="#777" FontSize="12"
+                       VerticalAlignment="Center" />
+            <TextBlock Grid.Column="1" Text="退出前会停止 DHCP 服务，并恢复所选本机网卡；不会还原 BMC 网络设置。"
                        Foreground="#777" FontSize="12" VerticalAlignment="Center" Margin="12,0" />
             <Button Grid.Column="2" Content="退出并恢复网卡" Command="{Binding ExitCommand}"
                     Width="150" Height="32" />
         </Grid>
+
+        <Border x:Name="SupportProgressCard"
+                Grid.RowSpan="4"
+                Width="420"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                Margin="0,0,0,48"
+                Padding="14,11"
+                Background="#FFFFFF"
+                BorderBrush="#B8D7F0"
+                BorderThickness="1"
+                CornerRadius="8"
+                Visibility="Collapsed"
+                IsHitTestVisible="False"
+                Panel.ZIndex="10">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid>
+                    <TextBlock x:Name="SupportProgressTitle"
+                               Text="正在收集日志和诊断"
+                               FontWeight="Bold"
+                               Foreground="#005A9E" />
+                    <TextBlock x:Name="SupportProgressPercent"
+                               HorizontalAlignment="Right"
+                               Foreground="#666"
+                               Text="0%" />
+                </Grid>
+                <TextBlock x:Name="SupportProgressDetail"
+                           Grid.Row="1"
+                           Margin="0,5,0,8"
+                           Foreground="#666"
+                           Text="正在准备支持包..."
+                           TextTrimming="CharacterEllipsis" />
+                <ProgressBar x:Name="SupportProgressBar"
+                             Grid.Row="2"
+                             Minimum="0"
+                             Maximum="100"
+                             Value="0"
+                             Height="6"
+                             Foreground="#005A9E" />
+            </Grid>
+        </Border>
     </Grid>
 </Window>

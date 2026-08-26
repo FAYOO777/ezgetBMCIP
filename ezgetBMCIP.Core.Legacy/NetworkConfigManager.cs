@@ -41,7 +41,11 @@ namespace EzGetBmcIp
             }
 
             var props = ni.GetIPProperties();
-            var dhcpEnabled = props.GetIPv4Properties()?.IsDhcpEnabled ?? false;
+            var fallbackDhcpEnabled = props.GetIPv4Properties()?.IsDhcpEnabled ?? false;
+            string dhcpModeSource;
+            var dhcpEnabled = GetDhcpEnabled(adapter, fallbackDhcpEnabled, out dhcpModeSource);
+            if (Logger != null)
+                Logger("IPv4 mode captured from " + dhcpModeSource + ": dhcp=" + dhcpEnabled);
             var config = new AdapterOriginalConfig
             {
                 DhcpEnabled = dhcpEnabled,
@@ -130,13 +134,8 @@ namespace EzGetBmcIp
             }
             else if (origConfig.StaticAddresses.Count > 0)
             {
-                var primary = origConfig.StaticAddresses[0];
-                var gatewayArg = origConfig.Gateways.Count > 0 ? origConfig.Gateways[0].ToString() : "none";
-                var gatewayMetricArg = origConfig.Gateways.Count > 0 && origConfig.GatewayMetrics.Count > 0
-                    ? " " + origConfig.GatewayMetrics[0]
-                    : "";
                 await RunNetshAsync(
-                    "interface ipv4 set address name=\"" + adapter.Name + "\" static " + primary.Address + " " + primary.Mask + " " + gatewayArg + gatewayMetricArg,
+                    BuildStaticAddressRestoreCommand(adapter, origConfig),
                     cancellationToken);
 
                 for (var i = 1; i < origConfig.StaticAddresses.Count; i++)
@@ -161,6 +160,11 @@ namespace EzGetBmcIp
                 await RunNetshAsync(
                     "interface ipv4 set address name=\"" + adapter.Name + "\" source=static",
                     cancellationToken);
+            }
+
+            if (!origConfig.DhcpEnabled)
+            {
+                RestoreGatewayMetrics(adapter, origConfig.GatewayMetrics);
             }
 
             if (origConfig.DnsServersFromDhcp || origConfig.DnsServers.Count == 0)
@@ -241,10 +245,7 @@ namespace EzGetBmcIp
             return Task.Run(() =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var ni = FindNetworkInterface(adapter);
-                if (ni == null)
-                    throw new InvalidOperationException("Selected adapter was not found during DHCP verification.");
-                return ni.GetIPProperties().GetIPv4Properties()?.IsDhcpEnabled ?? false;
+                return CaptureOriginalConfig(adapter).DhcpEnabled;
             }, cancellationToken);
         }
 
@@ -272,9 +273,10 @@ namespace EzGetBmcIp
                 || IpSetEquals(current.StaticAddresses.Select(a => a.Address), expected.StaticAddresses.Select(a => a.Address));
             var gatewayAddressesMatch = expected.DhcpEnabled
                 || IpSetEquals(current.Gateways, expected.Gateways);
-            var gatewayMetricsMatch = expected.DhcpEnabled
-                || expected.GatewayMetrics.Count == 0
-                || current.GatewayMetrics.SequenceEqual(expected.GatewayMetrics);
+            var gatewayMetricsMatch = GatewayMetricsMatch(
+                current.GatewayMetrics,
+                expected.GatewayMetrics,
+                expected.DhcpEnabled);
             var gatewaysMatch = gatewayAddressesMatch && gatewayMetricsMatch;
             var dnsModeMatches = current.DnsServersFromDhcp == expected.DnsServersFromDhcp;
             var dnsServersMatch = expected.DnsServersFromDhcp
@@ -285,6 +287,8 @@ namespace EzGetBmcIp
                 "success=" + success + ", mode=" + current.DhcpEnabled + "/" + expected.DhcpEnabled +
                 ", addresses=" + addressesMatch + ", gateways=" + gatewayAddressesMatch +
                 ", gatewayMetrics=" + gatewayMetricsMatch +
+                ", gatewayMetricsCurrent=[" + string.Join(",", current.GatewayMetrics) + "]" +
+                ", gatewayMetricsExpected=[" + string.Join(",", expected.GatewayMetrics) + "]" +
                 ", dnsMode=" + current.DnsServersFromDhcp + "/" + expected.DnsServersFromDhcp +
                 ", dns=" + dnsServersMatch + ", toolStaticRemoved=" + toolStaticRemoved +
                 ", toolLeaseRemoved=" + toolLeaseRemoved;
@@ -569,16 +573,20 @@ namespace EzGetBmcIp
 
         private static IEnumerable<string> GetAdapterRegistryKeyNames(WiredAdapter adapter)
         {
-            var raw = adapter.Id ?? "";
-            var trimmed = TrimBraces(raw).Trim();
-            if (!string.IsNullOrWhiteSpace(raw))
-                yield return raw.Trim();
-            if (!string.IsNullOrWhiteSpace(trimmed))
+            var resolvedId = FindNetworkInterface(adapter)?.Id;
+            foreach (var raw in new[] { adapter.Id, resolvedId })
             {
-                yield return trimmed;
-                yield return "{" + trimmed + "}";
-                yield return trimmed.ToUpperInvariant();
-                yield return "{" + trimmed.ToUpperInvariant() + "}";
+                var value = raw ?? "";
+                var trimmed = TrimBraces(value).Trim();
+                if (!string.IsNullOrWhiteSpace(value))
+                    yield return value.Trim();
+                if (!string.IsNullOrWhiteSpace(trimmed))
+                {
+                    yield return trimmed;
+                    yield return "{" + trimmed + "}";
+                    yield return trimmed.ToUpperInvariant();
+                    yield return "{" + trimmed.ToUpperInvariant() + "}";
+                }
             }
         }
 
@@ -689,6 +697,51 @@ namespace EzGetBmcIp
             }
         }
 
+        private static bool GetDhcpEnabled(WiredAdapter adapter, bool fallback, out string source)
+        {
+            try
+            {
+                string keyPath;
+                using (var key = OpenAdapterRegistryKey(adapter, false, out keyPath))
+                {
+                    if (key != null)
+                    {
+                        var value = TryReadDhcpEnabled(key.GetValue("EnableDHCP"));
+                        if (value.HasValue)
+                        {
+                            source = "registry EnableDHCP";
+                            return value.Value;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (Logger != null)
+                    Logger("DHCP mode detection failed: " + ex.Message);
+            }
+
+            source = "NetworkInterface fallback";
+            return fallback;
+        }
+
+        internal static bool? TryReadDhcpEnabled(object value)
+        {
+            if (value is int)
+                return (int)value != 0;
+            if (value is long)
+                return (long)value != 0;
+            if (value is uint)
+                return (uint)value != 0;
+
+            var text = value as string;
+            int number;
+            if (text != null && int.TryParse(text, out number))
+                return number != 0;
+
+            return null;
+        }
+
         private static IEnumerable<int> ReadGatewayMetrics(WiredAdapter adapter)
         {
             try
@@ -715,6 +768,64 @@ namespace EzGetBmcIp
                 if (Logger != null)
                     Logger("Gateway metric detection failed: " + ex.Message);
                 return new int[0];
+            }
+        }
+
+        internal static string BuildStaticAddressRestoreCommand(
+            WiredAdapter adapter,
+            AdapterOriginalConfig originalConfig)
+        {
+            var primary = originalConfig.StaticAddresses[0];
+            var command =
+                "interface ipv4 set address name=\"" + adapter.Name + "\" source=static " +
+                "address=" + primary.Address + " mask=" + primary.Mask;
+
+            if (originalConfig.Gateways.Count == 0)
+                return command + " gateway=none";
+
+            command += " gateway=" + originalConfig.Gateways[0];
+            if (originalConfig.GatewayMetrics.Count > 0)
+                command += " gwmetric=" + originalConfig.GatewayMetrics[0].ToString(CultureInfo.InvariantCulture);
+
+            return command;
+        }
+
+        internal static bool GatewayMetricsMatch(
+            IReadOnlyCollection<int> current,
+            IReadOnlyCollection<int> expected,
+            bool expectedDhcpEnabled)
+        {
+            return expectedDhcpEnabled
+                || expected.Count == 0
+                || current.SequenceEqual(expected);
+        }
+
+        private static void RestoreGatewayMetrics(WiredAdapter adapter, IReadOnlyCollection<int> gatewayMetrics)
+        {
+            try
+            {
+                string keyPath;
+                using (var key = OpenAdapterRegistryKey(adapter, true, out keyPath))
+                {
+                    if (key == null)
+                    {
+                        if (Logger != null)
+                            Logger("Gateway metric restore skipped because the adapter registry key was not found. Tried: " + keyPath);
+                        return;
+                    }
+
+                    var values = gatewayMetrics
+                        .Select(metric => metric.ToString(CultureInfo.InvariantCulture))
+                        .ToArray();
+                    key.SetValue("DefaultGatewayMetric", values, Microsoft.Win32.RegistryValueKind.MultiString);
+                    if (Logger != null)
+                        Logger("Gateway metric restore persisted: [" + string.Join(",", values) + "]");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (Logger != null)
+                    Logger("Gateway metric restore failed: " + ex.Message);
             }
         }
 

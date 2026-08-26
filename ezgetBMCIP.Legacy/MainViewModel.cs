@@ -26,9 +26,12 @@ namespace EzGetBmcIp.Legacy
         private Task _endpointProbeTask = Task.CompletedTask;
         private bool _isClosing;
 
+        private bool _isPreparation = true;
         private bool _isFlowStarted;
+        private string _initError;
 
         public SubnetConfig SubnetConfig => _subnetConfig;
+        public string VersionText => AppVersionText.Get();
 
         public ObservableCollection<WiredAdapter> Adapters { get; } = new ObservableCollection<WiredAdapter>();
         private WiredAdapter _selectedAdapterItem;
@@ -99,13 +102,15 @@ namespace EzGetBmcIp.Legacy
             ? ""
             : PreferredBmcScheme + "://" + _discoveredIp;
 
-        public bool ShowAdapterSelection => !_isFlowStarted;
+        public bool ShowPreparation => _isPreparation;
+        public bool ShowAdapterSelection => !_isPreparation && !_isFlowStarted;
         public bool ShowRunning => _isFlowStarted && !_isCleanupDone;
         public bool ShowIpResult => !string.IsNullOrEmpty(_discoveredIp) && _isFlowStarted;
 
         public string AdapterCardLine => _selectedAdapter?.DisplayName ?? "";
 
         public ICommand StartCommand { get; }
+        public ICommand GoNextCommand { get; }
         public ICommand ExitCommand { get; }
         public ICommand CancelCommand { get; }
         public ICommand RetryEndpointCommand { get; }
@@ -114,10 +119,12 @@ namespace EzGetBmcIp.Legacy
 
         public event Action RequestClose;
         public event Action<string> OpenBrowserRequested;
+        internal event Func<ConsentNotice, bool> ConsentRequested;
 
         public MainViewModel()
         {
             StartCommand = new RelayCommand(async _ => await StartFlowAsync());
+            GoNextCommand = new RelayCommand(_ => GoNext());
             ExitCommand = new RelayCommand(_ => RequestClose?.Invoke());
             CancelCommand = new RelayCommand(_ => CancelFlow());
             RetryEndpointCommand = new RelayCommand(async _ =>
@@ -157,9 +164,32 @@ namespace EzGetBmcIp.Legacy
             catch (Exception ex)
             {
                 Log("Initialize failed: " + ex.Message);
+                _initError = ex.Message;
                 DetailText = ex.Message;
                 StartButtonEnabled = false;
             }
+        }
+
+        private void GoNext()
+        {
+            if (!string.IsNullOrWhiteSpace(_initError))
+            {
+                StatusText = "操作失败";
+                DetailText = _initError;
+                return;
+            }
+
+            if (!RequestConsent(ConsentNotice.CreateUsageRisk()))
+            {
+                Log("Usage risk consent declined");
+                return;
+            }
+
+            _isPreparation = false;
+            StatusText = "选择连接 BMC 的网卡";
+            DetailText = "选择直连服务器管理口的有线网卡，然后点击“开始”。";
+            OnPropertyChanged(nameof(ShowPreparation));
+            OnPropertyChanged(nameof(ShowAdapterSelection));
         }
 
         private async Task RecoverPendingNetworkConfigurationAsync(System.Collections.Generic.IReadOnlyList<WiredAdapter> adapters)
@@ -217,7 +247,31 @@ namespace EzGetBmcIp.Legacy
                 BadgeColor = "#D13438";
                 return Task.CompletedTask;
             }
+
+            AdapterOriginalConfig originalConfig;
+            try
+            {
+                originalConfig = NetworkConfigManager.CaptureOriginalConfig(SelectedAdapterItem);
+            }
+            catch (Exception ex)
+            {
+                Log("Original configuration capture failed before consent: " + ex.Message);
+                StatusText = "无法读取网卡原始配置";
+                DetailText = "为避免覆盖现有网络设置，已停止操作：" + ex.Message;
+                BadgeText = "无法确认";
+                BadgeColor = "#D13438";
+                return Task.CompletedTask;
+            }
+
+            if (!RequestConsent(ConsentNotice.CreateNetworkChange(
+                    SelectedAdapterItem, _subnetConfig, originalConfig)))
+            {
+                Log("Network change consent declined");
+                return Task.CompletedTask;
+            }
+
             _selectedAdapter = SelectedAdapterItem;
+            _originalConfig = originalConfig;
             _adapterSelectionEnabled = false;
             _startButtonEnabled = false;
             _isFlowStarted = true;
@@ -272,12 +326,14 @@ namespace EzGetBmcIp.Legacy
 
         private async Task ConfigureAdapterAsync(CancellationToken ct)
         {
+            if (_selectedAdapter == null || _originalConfig == null)
+                throw new InvalidOperationException("未确认网卡原始配置，已停止修改网络设置。");
+
             StatusText = "\u6b63\u5728\u914d\u7f6e\u7f51\u5361...";
-            ActivityText = "\u6b63\u5728\u5c06\u7f51\u5361\u5207\u6362\u5230 " + _subnetConfig.ServerDisplay;
+            ActivityText = "已确认原始配置，正在将网卡切换到 " + _subnetConfig.ServerDisplay;
             BadgeText = "\u5904\u7406\u4e2d";
             BadgeColor = "#0078D4";
 
-            _originalConfig = NetworkConfigManager.CaptureOriginalConfig(_selectedAdapter);
             Log("Config: dhcpEnabled=" + _originalConfig.DhcpEnabled +
                 ", dnsFromDhcp=" + _originalConfig.DnsServersFromDhcp +
                 ", gatewayMetrics=" + _originalConfig.GatewayMetrics.Count +
@@ -448,6 +504,30 @@ namespace EzGetBmcIp.Legacy
         {
             if (!string.IsNullOrEmpty(DiscoveredIp))
                 OpenBrowserRequested?.Invoke(scheme + "://" + DiscoveredIp);
+        }
+
+        private bool RequestConsent(ConsentNotice notice)
+        {
+            var presenter = ConsentRequested;
+            if (presenter == null)
+            {
+                Log("Consent blocked because no presenter is registered: " + notice.Title);
+                return false;
+            }
+
+            try
+            {
+                return presenter.Invoke(notice);
+            }
+            catch (Exception ex)
+            {
+                Log("Consent dialog failed: " + ex.Message);
+                StatusText = "无法显示风险告知";
+                DetailText = "为避免误操作，已停止继续：" + ex.Message;
+                BadgeText = "无法确认";
+                BadgeColor = "#D13438";
+                return false;
+            }
         }
 
         public async Task<bool> CleanupAsync()

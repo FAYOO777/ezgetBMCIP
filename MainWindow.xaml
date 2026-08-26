@@ -7,7 +7,8 @@
         Width="700" Height="660" MinWidth="700" MinHeight="580"
         WindowStartupLocation="CenterScreen"
         ExtendsContentIntoTitleBar="True"
-        WindowBackdropType="Mica">
+        WindowBackdropType="Mica"
+        PreviewKeyDown="Window_PreviewKeyDown">
 
     <Grid>
         <Grid.RowDefinitions>
@@ -59,7 +60,7 @@
                                 <TextBlock FontSize="13" TextWrapping="Wrap"
                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                            Margin="0,0,0,8"
-                                           Text="2. 此工具会临时修改所选网卡 IP，退出时恢复原始配置。" />
+                                           Text="2. 此工具会临时修改所选网卡；退出时仅恢复本机网卡，不会还原 BMC 网络设置。" />
                                 <TextBlock FontSize="13" TextWrapping="Wrap"
                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                            Text="3. 仅适用于直连场景，不适合在已有局域网内使用。" />
@@ -174,14 +175,17 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0">
-                                <TextBlock Text="高级设置：自定义网段" FontSize="14" FontWeight="Bold"
+                                <TextBlock Text="高级设置：临时修改本机网卡 IPv4" FontSize="14" FontWeight="Bold"
                                            Foreground="{StaticResource BrandPrimaryBrush}"
                                            Margin="0,0,0,4" />
                                 <TextBlock FontSize="12"
+                                           TextWrapping="Wrap"
                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}">
-                                    <Run Text="默认会分配 BMC 地址 "/>
+                                    <Run Text="下方 IP 会临时设置到所选网卡；BMC 不会被主动修改。"/>
+                                    <LineBreak />
+                                    <Run Text="BMC 经 DHCP 请求时，预期获得 "/>
                                     <Run Text="{Binding SubnetConfig.PoolDisplay, Mode=OneWay}" FontWeight="SemiBold"/>
-                                    <Run Text="，大多数直连场景无需修改。"/>
+                                    <Run Text="。"/>
                                 </TextBlock>
                             </StackPanel>
 
@@ -194,18 +198,24 @@
                                        Margin="18,0,0,0" />
                         </Grid>
 
-                        <!-- 4 octet input boxes -->
-                        <Grid HorizontalAlignment="Center" Margin="0,14,0,0"
-                              Visibility="{Binding IsAdvancedSubnetExpanded, Converter={StaticResource BoolToVis}}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="56" />
-                                <ColumnDefinition Width="16" />
-                                <ColumnDefinition Width="56" />
-                                <ColumnDefinition Width="16" />
-                                <ColumnDefinition Width="56" />
-                                <ColumnDefinition Width="16" />
-                                <ColumnDefinition Width="56" />
-                            </Grid.ColumnDefinitions>
+                        <!-- Temporary IPv4 address for the selected local adapter -->
+                        <StackPanel Margin="0,14,0,0"
+                                    Visibility="{Binding IsAdvancedSubnetExpanded, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="本机网卡临时 IPv4 地址"
+                                       HorizontalAlignment="Center"
+                                       Margin="0,0,0,6"
+                                       FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            <Grid HorizontalAlignment="Center">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="56" />
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="56" />
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="56" />
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="56" />
+                                </Grid.ColumnDefinitions>
 
                             <TextBox Grid.Column="0" Text="{Binding SubnetConfig.Octet1Text, UpdateSourceTrigger=LostFocus}"
                                      MaxLength="3" TextAlignment="Center"
@@ -234,13 +244,14 @@
                             <TextBlock Grid.Column="5" Text="." FontSize="20" FontWeight="Bold"
                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                        HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            <TextBox Grid.Column="6" Text="{Binding SubnetConfig.Octet4Text, UpdateSourceTrigger=LostFocus}"
-                                     MaxLength="3" TextAlignment="Center"
-                                     FontSize="18" FontWeight="SemiBold"
-                                     Height="40" VerticalContentAlignment="Center"
-                                     Style="{StaticResource SubnetOctetTextBoxStyle}"
-                                     PreviewTextInput="OctetTextBox_PreviewTextInput" />
-                        </Grid>
+                                <TextBox Grid.Column="6" Text="{Binding SubnetConfig.Octet4Text, UpdateSourceTrigger=LostFocus}"
+                                         MaxLength="3" TextAlignment="Center"
+                                         FontSize="18" FontWeight="SemiBold"
+                                         Height="40" VerticalContentAlignment="Center"
+                                         Style="{StaticResource SubnetOctetTextBoxStyle}"
+                                         PreviewTextInput="OctetTextBox_PreviewTextInput" />
+                            </Grid>
+                        </StackPanel>
 
                         <!-- Info -->
                         <TextBlock HorizontalAlignment="Center" Margin="0,8,0,0" FontSize="11"
@@ -248,7 +259,7 @@
                                    Visibility="{Binding IsAdvancedSubnetExpanded, Converter={StaticResource BoolToVis}}">
                             <Run Text="子网掩码: 255.255.255.0"/>
                             <Run Text="  ·  "/>
-                            <Run Text="BMC 固定地址: "/>
+                            <Run Text="BMC 经 DHCP 预期地址: "/>
                             <Run Text="{Binding SubnetConfig.PoolDisplay, Mode=OneWay}"/>
                         </TextBlock>
                         <TextBlock HorizontalAlignment="Center" Margin="0,4,0,0" FontSize="11"
@@ -558,40 +569,6 @@
                     <TextBlock Text="{Binding VersionText}" FontSize="11"
                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                VerticalAlignment="Center" />
-                    <TextBlock Text=" · " FontSize="11"
-                                Foreground="{DynamicResource CardStrokeColorDefaultBrush}"
-                                VerticalAlignment="Center" />
-                    <TextBlock FontSize="11" VerticalAlignment="Center"
-                                Cursor="Hand">
-                        <Hyperlink Click="OpenLog_Click"
-                                    Foreground="{StaticResource BrandPrimaryBrush}"
-                                    TextDecorations="None">
-                            日志
-                        </Hyperlink>
-                    </TextBlock>
-                    <TextBlock Text=" · " FontSize="11"
-                                Foreground="{DynamicResource CardStrokeColorDefaultBrush}"
-                                VerticalAlignment="Center" />
-                    <TextBlock FontSize="11" VerticalAlignment="Center"
-                                Cursor="Hand">
-                        <Hyperlink Click="OpenDiagnostics_Click"
-                                    Foreground="{StaticResource BrandPrimaryBrush}"
-                                    TextDecorations="None">
-                            诊断
-                        </Hyperlink>
-                    </TextBlock>
-                    <TextBlock Text=" · " FontSize="11"
-                                Foreground="{DynamicResource CardStrokeColorDefaultBrush}"
-                                VerticalAlignment="Center" />
-                    <TextBlock FontSize="11" VerticalAlignment="Center"
-                               Cursor="Hand">
-                        <Hyperlink NavigateUri="{Binding GitHubUrl}"
-                                   RequestNavigate="GitHubLink_RequestNavigate"
-                                   Foreground="{StaticResource BrandPrimaryBrush}"
-                                   TextDecorations="None">
-                            GitHub
-                        </Hyperlink>
-                    </TextBlock>
                 </StackPanel>
                 <ui:Button Content="{Binding ExitButtonText}"
                         Command="{Binding ExitCommand}"
@@ -599,6 +576,52 @@
                         Appearance="Secondary"
                         HorizontalAlignment="Right" VerticalAlignment="Center"
                         Width="130" Height="40" />
+            </Grid>
+        </Border>
+
+        <Border x:Name="SupportProgressCard"
+                Grid.RowSpan="3"
+                Width="420"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                Margin="24,0,24,72"
+                Padding="16,12"
+                Background="{DynamicResource ControlFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Visibility="Collapsed"
+                IsHitTestVisible="False"
+                Panel.ZIndex="10">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid>
+                    <TextBlock x:Name="SupportProgressTitle"
+                               Text="正在收集日志和诊断"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource BrandPrimaryBrush}" />
+                    <TextBlock x:Name="SupportProgressPercent"
+                               HorizontalAlignment="Right"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Text="0%" />
+                </Grid>
+                <TextBlock x:Name="SupportProgressDetail"
+                           Grid.Row="1"
+                           Margin="0,5,0,8"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Text="正在准备支持包..."
+                           TextTrimming="CharacterEllipsis" />
+                <ProgressBar x:Name="SupportProgressBar"
+                             Grid.Row="2"
+                             Minimum="0"
+                             Maximum="100"
+                             Value="0"
+                             Height="6"
+                             Foreground="{StaticResource BrandPrimaryBrush}" />
             </Grid>
         </Border>
     </Grid>
