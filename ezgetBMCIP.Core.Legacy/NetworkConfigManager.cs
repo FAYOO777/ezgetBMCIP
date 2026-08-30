@@ -32,6 +32,23 @@ namespace EzGetBmcIp
             return GetPhysicalEthernetAdaptersFallback();
         }
 
+        public static WiredAdapter ResolveCurrentAdapter(WiredAdapter previousAdapter)
+        {
+            var adapters = GetWiredAdapters();
+            var previousMac = NormalizeMac(previousAdapter.MacAddress);
+            var resolved = adapters.FirstOrDefault(adapter =>
+                SameAdapterId(adapter.Id, previousAdapter.Id)
+                || (previousMac.Length > 0
+                    && NormalizeMac(adapter.MacAddress).Equals(previousMac, StringComparison.OrdinalIgnoreCase)));
+            if (resolved == null)
+                throw new InvalidOperationException("The original adapter could not be found again by GUID or MAC address.");
+
+            if (Logger != null)
+                Logger("Recovery adapter re-enumerated: name=" + resolved.Name +
+                    ", id=" + resolved.Id + ", mac=" + resolved.MacAddress);
+            return resolved;
+        }
+
         public static AdapterOriginalConfig CaptureOriginalConfig(WiredAdapter adapter)
         {
             var ni = FindNetworkInterface(adapter);
@@ -41,22 +58,51 @@ namespace EzGetBmcIp
             }
 
             var props = ni.GetIPProperties();
-            var fallbackDhcpEnabled = props.GetIPv4Properties()?.IsDhcpEnabled ?? false;
+            var activeDhcpEnabled = props.GetIPv4Properties()?.IsDhcpEnabled ?? false;
             string dhcpModeSource;
-            var dhcpEnabled = GetDhcpEnabled(adapter, fallbackDhcpEnabled, out dhcpModeSource);
+            var persistentDhcpEnabled = GetDhcpEnabled(adapter, activeDhcpEnabled, out dhcpModeSource);
             if (Logger != null)
-                Logger("IPv4 mode captured from " + dhcpModeSource + ": dhcp=" + dhcpEnabled);
+                Logger("IPv4 mode captured: active=" + activeDhcpEnabled +
+                    ", persistent=" + persistentDhcpEnabled +
+                    ", persistentSource=" + dhcpModeSource);
             var config = new AdapterOriginalConfig
             {
-                DhcpEnabled = dhcpEnabled,
-                DnsServersFromDhcp = IsDnsAutomatic(adapter, dhcpEnabled)
+                DhcpEnabled = persistentDhcpEnabled,
+                ActiveDhcpEnabled = activeDhcpEnabled,
+                PersistentDhcpEnabled = persistentDhcpEnabled,
+                DnsServersFromDhcp = IsDnsAutomatic(adapter, persistentDhcpEnabled)
             };
 
             foreach (var addr in props.UnicastAddresses.Where(a => a.Address.AddressFamily == AddressFamily.InterNetwork))
             {
                 if (addr.IPv4Mask != null)
                 {
-                    config.StaticAddresses.Add((addr.Address, addr.IPv4Mask));
+                    var preserve = ShouldPreserveCapturedAddress(
+                        addr.Address, addr.PrefixOrigin, addr.SuffixOrigin, persistentDhcpEnabled);
+                    if (Logger != null)
+                    {
+                        Logger("IPv4 address observed: address=" + addr.Address +
+                            ", mask=" + addr.IPv4Mask +
+                            ", prefixOrigin=" + addr.PrefixOrigin +
+                            ", suffixOrigin=" + addr.SuffixOrigin +
+                            ", state=" + addr.DuplicateAddressDetectionState +
+                            ", snapshot=" + preserve);
+                    }
+                    if (preserve)
+                    {
+                        config.StaticAddresses.Add(new AdapterIpv4Address(
+                            addr.Address,
+                            addr.IPv4Mask,
+                            addr.PrefixOrigin,
+                            addr.SuffixOrigin,
+                            addr.DuplicateAddressDetectionState));
+                    }
+                    else if (Logger != null)
+                    {
+                        Logger("Automatic link-local IPv4 excluded from recovery snapshot: " +
+                            addr.Address + " prefixOrigin=" + addr.PrefixOrigin +
+                            " suffixOrigin=" + addr.SuffixOrigin);
+                    }
                 }
             }
 
@@ -65,7 +111,7 @@ namespace EzGetBmcIp
                 config.Gateways.Add(gateway.Address);
             }
 
-            if (!dhcpEnabled)
+            if (!persistentDhcpEnabled)
             {
                 config.GatewayMetrics.AddRange(ReadGatewayMetrics(adapter));
             }
@@ -119,10 +165,50 @@ namespace EzGetBmcIp
 
         public static async Task SetStaticForToolAsync(WiredAdapter adapter, SubnetConfig config, CancellationToken cancellationToken)
         {
-            await RunNetshAsync(
-                "interface ipv4 set address name=\"" + adapter.Name + "\" static " + config.ServerIp + " " + config.Mask,
-                cancellationToken);
+            var expected = new AdapterOriginalConfig
+            {
+                DhcpEnabled = false,
+                ActiveDhcpEnabled = false,
+                PersistentDhcpEnabled = false,
+                DnsServersFromDhcp = true
+            };
+            expected.StaticAddresses.Add(new AdapterIpv4Address(
+                IPAddress.Parse(config.ServerIp),
+                IPAddress.Parse(config.Mask),
+                PrefixOrigin.Manual,
+                SuffixOrigin.Manual,
+                DuplicateAddressDetectionState.Preferred));
+
+            var details = new List<string>();
+            await ApplyStaticPrimaryAsync(adapter, expected, cancellationToken);
             await ClearDnsForToolAsync(adapter, cancellationToken);
+
+            var primary = await VerifyUntilStableAsync(
+                adapter, expected, config, cancellationToken, 4,
+                "Tool static primary verify", details, false);
+            if (primary.IsSuccess)
+                return;
+
+            if (!NeedsStaticFallback(primary.LastVerification))
+            {
+                throw new InvalidOperationException(
+                    "The adapter entered static mode, but the tool address or DNS state did not match." + Environment.NewLine +
+                    string.Join(Environment.NewLine, details));
+            }
+
+            if (Logger != null)
+                Logger("Tool static primary verification failed; invoking WMI EnableStatic fallback.");
+            await ApplyStaticFallbackAsync(adapter, expected, cancellationToken);
+            await ClearDnsForToolAsync(adapter, cancellationToken);
+            var fallback = await VerifyUntilStableAsync(
+                adapter, expected, config, cancellationToken, 8,
+                "Tool static fallback verify", details, false);
+            if (fallback.IsSuccess)
+                return;
+
+            throw new InvalidOperationException(
+                "Failed to configure the local adapter with the tool static address." + Environment.NewLine +
+                string.Join(Environment.NewLine, details));
         }
 
         public static async Task RestoreOriginalConfigAsync(WiredAdapter adapter, AdapterOriginalConfig origConfig, SubnetConfig subnetConfig, CancellationToken cancellationToken)
@@ -131,89 +217,215 @@ namespace EzGetBmcIp
             if (origConfig.DhcpEnabled)
             {
                 details.Add(await RestoreDhcpAndCollectLogAsync(adapter, subnetConfig, cancellationToken, true));
+                var dhcpVerification = await VerifyUntilStableAsync(
+                    adapter, origConfig, subnetConfig, cancellationToken, 12,
+                    "Original DHCP restore verify", details, true);
+                if (dhcpVerification.IsSuccess)
+                {
+                    if (Logger != null)
+                        Logger("Original DHCP configuration restored and verified");
+                    return;
+                }
             }
             else if (origConfig.StaticAddresses.Count > 0)
             {
-                await RunNetshAsync(
-                    BuildStaticAddressRestoreCommand(adapter, origConfig),
-                    cancellationToken);
-
-                for (var i = 1; i < origConfig.StaticAddresses.Count; i++)
+                await ApplyStaticPrimaryAsync(adapter, origConfig, cancellationToken);
+                await RestoreDnsAsync(adapter, origConfig, cancellationToken);
+                var primary = await VerifyUntilStableAsync(
+                    adapter, origConfig, subnetConfig, cancellationToken, 4,
+                    "Original static primary verify", details, true);
+                if (primary.IsSuccess)
                 {
-                    var item = origConfig.StaticAddresses[i];
-                    await RunNetshAsync(
-                        "interface ipv4 add address name=\"" + adapter.Name + "\" " + item.Address + " " + item.Mask,
-                        cancellationToken);
+                    if (Logger != null)
+                        Logger("Original static configuration restored and verified by the primary path");
+                    return;
                 }
 
-                for (var i = 1; i < origConfig.Gateways.Count; i++)
+                if (!NeedsStaticFallback(primary.LastVerification))
                 {
-                    await RunNetshAsync(
-                        "interface ipv4 add route prefix=0.0.0.0/0 interface=\"" + adapter.Name + "\" nexthop=" + origConfig.Gateways[i] +
-                        (i < origConfig.GatewayMetrics.Count ? " metric=" + origConfig.GatewayMetrics[i] : "") +
-                        " store=persistent",
-                        cancellationToken);
+                    throw new InvalidOperationException(
+                        "The adapter entered static mode, but the restored address, gateway, or DNS did not match." + Environment.NewLine +
+                        string.Join(Environment.NewLine, details));
                 }
-            }
-            else
-            {
-                await RunNetshAsync(
-                    "interface ipv4 set address name=\"" + adapter.Name + "\" source=static",
-                    cancellationToken);
-            }
 
-            if (!origConfig.DhcpEnabled)
-            {
-                RestoreGatewayMetrics(adapter, origConfig.GatewayMetrics);
-            }
-
-            if (origConfig.DnsServersFromDhcp || origConfig.DnsServers.Count == 0)
-            {
-                await RunNetshAsync("interface ipv4 set dnsservers name=\"" + adapter.Name + "\" source=dhcp", cancellationToken);
-            }
-            else
-            {
-                await RunNetshAsync(
-                    "interface ipv4 set dnsservers name=\"" + adapter.Name + "\" static " + origConfig.DnsServers[0] + " primary",
-                    cancellationToken);
-
-                for (var i = 1; i < origConfig.DnsServers.Count; i++)
-                {
-                    await RunNetshAsync(
-                        "interface ipv4 add dnsservers name=\"" + adapter.Name + "\" " + origConfig.DnsServers[i] + " index=" + (i + 1),
-                        cancellationToken);
-                }
-            }
-
-            var consecutiveSuccesses = 0;
-            for (var i = 0; i < 12; i++)
-            {
-                var verification = await VerifyOriginalConfigAsync(adapter, origConfig, subnetConfig, cancellationToken, true);
-                details.Add("verify " + (i + 1) + ": " + verification.Details);
                 if (Logger != null)
-                    Logger("Original config restore verify " + (i + 1) + ": " + verification.Details);
+                    Logger("Original static primary verification failed; invoking WMI EnableStatic fallback. Last=" +
+                        (primary.LastVerification != null ? primary.LastVerification.Details : "none"));
+                await ApplyStaticFallbackAsync(adapter, origConfig, cancellationToken);
+                await RestoreDnsAsync(adapter, origConfig, cancellationToken);
+                var fallback = await VerifyUntilStableAsync(
+                    adapter, origConfig, subnetConfig, cancellationToken, 12,
+                    "Original static fallback verify", details, true);
+                if (fallback.IsSuccess)
+                {
+                    if (Logger != null)
+                        Logger("Original static configuration restored and verified by the fallback path");
+                    return;
+                }
+            }
+            else
+            {
+                throw new InvalidOperationException(
+                    "The original adapter was static but contained no restorable IPv4 address.");
+            }
 
-                if (verification.IsSuccess)
+            throw new InvalidOperationException(
+                "Failed to restore the original adapter configuration." + Environment.NewLine +
+                string.Join(Environment.NewLine, details));
+        }
+
+        private static async Task ApplyStaticPrimaryAsync(
+            WiredAdapter adapter,
+            AdapterOriginalConfig config,
+            CancellationToken cancellationToken)
+        {
+            var output = await RunPowerShellAsync(BuildDisableDhcpScript(adapter), cancellationToken, false);
+            if (Logger != null)
+                Logger("Static mode primary PS output: " + output.Trim());
+            await ApplyStaticNetshAsync(adapter, config, cancellationToken);
+        }
+
+        private static async Task ApplyStaticFallbackAsync(
+            WiredAdapter adapter,
+            AdapterOriginalConfig config,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var addresses = config.StaticAddresses.Select(item => item.Address.ToString()).ToArray();
+            var masks = config.StaticAddresses.Select(item => item.Mask.ToString()).ToArray();
+            var fallbackResult = "WMI config not found";
+            using (var searcher = new ManagementObjectSearcher("SELECT * FROM Win32_NetworkAdapterConfiguration"))
+            {
+                foreach (ManagementObject obj in searcher.Get())
+                {
+                    var settingId = TrimBraces(Convert.ToString(obj["SettingID"]));
+                    if (!SameAdapterId(settingId, adapter.Id))
+                        continue;
+                    try
+                    {
+                        var input = obj.GetMethodParameters("EnableStatic");
+                        input["IPAddress"] = addresses;
+                        input["SubnetMask"] = masks;
+                        var result = obj.InvokeMethod("EnableStatic", input, null);
+                        fallbackResult = "EnableStatic ReturnValue=" + Convert.ToString(result?["ReturnValue"]);
+                    }
+                    catch (Exception ex)
+                    {
+                        fallbackResult = "EnableStatic ERR: " + ex.Message;
+                    }
+                    break;
+                }
+            }
+            if (Logger != null)
+                Logger("Static mode WMI fallback output: " + fallbackResult);
+            await ApplyStaticNetshAsync(adapter, config, cancellationToken);
+        }
+
+        private static async Task ApplyStaticNetshAsync(
+            WiredAdapter adapter,
+            AdapterOriginalConfig config,
+            CancellationToken cancellationToken)
+        {
+            await RunNetshAsync(BuildStaticAddressRestoreCommand(adapter, config), cancellationToken);
+            for (var i = 1; i < config.StaticAddresses.Count; i++)
+            {
+                var item = config.StaticAddresses[i];
+                await RunNetshAsync(
+                    "interface ipv4 add address name=\"" + adapter.Name + "\" address=" + item.Address +
+                    " mask=" + item.Mask + " store=persistent",
+                    cancellationToken);
+            }
+
+            for (var i = 1; i < config.Gateways.Count; i++)
+            {
+                await RunNetshAsync(
+                    "interface ipv4 add route prefix=0.0.0.0/0 interface=\"" + adapter.Name +
+                    "\" nexthop=" + config.Gateways[i] +
+                    (i < config.GatewayMetrics.Count ? " metric=" + config.GatewayMetrics[i] : "") +
+                    " store=persistent",
+                    cancellationToken);
+            }
+        }
+
+        private static async Task RestoreDnsAsync(
+            WiredAdapter adapter,
+            AdapterOriginalConfig config,
+            CancellationToken cancellationToken)
+        {
+            if (config.DnsServersFromDhcp || config.DnsServers.Count == 0)
+            {
+                await RunNetshAsync(
+                    "interface ipv4 set dnsservers name=\"" + adapter.Name + "\" source=dhcp",
+                    cancellationToken);
+                return;
+            }
+
+            await RunNetshAsync(
+                "interface ipv4 set dnsservers name=\"" + adapter.Name + "\" source=static address=" +
+                config.DnsServers[0] + " register=both validate=no",
+                cancellationToken);
+            for (var i = 1; i < config.DnsServers.Count; i++)
+            {
+                await RunNetshAsync(
+                    "interface ipv4 add dnsservers name=\"" + adapter.Name + "\" address=" +
+                    config.DnsServers[i] + " index=" + (i + 1) + " validate=no",
+                    cancellationToken);
+            }
+        }
+
+        private static async Task<VerificationWindowResult> VerifyUntilStableAsync(
+            WiredAdapter adapter,
+            AdapterOriginalConfig expected,
+            SubnetConfig subnetConfig,
+            CancellationToken cancellationToken,
+            int attempts,
+            string label,
+            List<string> details,
+            bool requireToolLeaseRemoved)
+        {
+            var consecutiveSuccesses = 0;
+            NetworkConfigVerification last = null;
+            for (var i = 0; i < attempts; i++)
+            {
+                last = await VerifyOriginalConfigAsync(
+                    adapter, expected, subnetConfig, cancellationToken, requireToolLeaseRemoved);
+                if (Logger != null)
+                    Logger(label + " " + (i + 1) + ": " + last.Details);
+                details.Add(label + " " + (i + 1) + ": " + last.Details);
+                if (last.IsSuccess)
                 {
                     consecutiveSuccesses++;
                     if (consecutiveSuccesses >= 2)
-                    {
-                        if (Logger != null)
-                            Logger("Original network configuration restored and verified");
-                        return;
-                    }
+                        return new VerificationWindowResult(true, last);
                 }
                 else
                 {
                     consecutiveSuccesses = 0;
                 }
 
-                await Task.Delay(1000, cancellationToken);
+                if (i + 1 < attempts)
+                    await Task.Delay(1000, cancellationToken);
+            }
+            return new VerificationWindowResult(false, last);
+        }
+
+        private sealed class VerificationWindowResult
+        {
+            public VerificationWindowResult(bool isSuccess, NetworkConfigVerification lastVerification)
+            {
+                IsSuccess = isSuccess;
+                LastVerification = lastVerification;
             }
 
-            throw new InvalidOperationException(
-                "Failed to restore the original adapter configuration." + Environment.NewLine +
-                string.Join(Environment.NewLine, details));
+            public bool IsSuccess { get; private set; }
+            public NetworkConfigVerification LastVerification { get; private set; }
+        }
+
+        internal static bool NeedsStaticFallback(NetworkConfigVerification verification)
+        {
+            return verification == null
+                || !verification.ActiveModeMatches
+                || !verification.PersistentModeMatches;
         }
 
         public static Task<bool> IsLinkUpAsync(WiredAdapter adapter, CancellationToken cancellationToken)
@@ -258,7 +470,9 @@ namespace EzGetBmcIp
         {
             cancellationToken.ThrowIfCancellationRequested();
             var current = await Task.Run(() => CaptureOriginalConfig(adapter), cancellationToken);
-            var modeMatches = current.DhcpEnabled == expected.DhcpEnabled;
+            var activeModeMatches = current.ActiveDhcpEnabled == expected.DhcpEnabled;
+            var persistentModeMatches = current.PersistentDhcpEnabled == expected.DhcpEnabled;
+            var modeMatches = activeModeMatches && persistentModeMatches;
             var expectedAddresses = new HashSet<string>(
                 expected.StaticAddresses.Select(a => a.Address.ToString()), StringComparer.OrdinalIgnoreCase);
             var currentAddresses = new HashSet<string>(
@@ -270,7 +484,7 @@ namespace EzGetBmcIp
                 || !currentAddresses.Contains(subnetConfig.PoolStart);
             var toolAddressesRemoved = toolStaticRemoved && toolLeaseRemoved;
             var addressesMatch = expected.DhcpEnabled
-                || IpSetEquals(current.StaticAddresses.Select(a => a.Address), expected.StaticAddresses.Select(a => a.Address));
+                || Ipv4AddressSetEquals(current.StaticAddresses, expected.StaticAddresses);
             var gatewayAddressesMatch = expected.DhcpEnabled
                 || IpSetEquals(current.Gateways, expected.Gateways);
             var gatewayMetricsMatch = GatewayMetricsMatch(
@@ -285,7 +499,11 @@ namespace EzGetBmcIp
             var success = modeMatches && addressesMatch && gatewaysMatch && dnsMatches && toolAddressesRemoved;
             var details =
                 "success=" + success + ", mode=" + current.DhcpEnabled + "/" + expected.DhcpEnabled +
+                ", modeActive=" + current.ActiveDhcpEnabled + "/" + expected.DhcpEnabled +
+                ", modePersistent=" + current.PersistentDhcpEnabled + "/" + expected.DhcpEnabled +
                 ", addresses=" + addressesMatch + ", gateways=" + gatewayAddressesMatch +
+                ", addressesCurrent=[" + FormatIpv4Addresses(current.StaticAddresses) + "]" +
+                ", addressesExpected=[" + FormatIpv4Addresses(expected.StaticAddresses) + "]" +
                 ", gatewayMetrics=" + gatewayMetricsMatch +
                 ", gatewayMetricsCurrent=[" + string.Join(",", current.GatewayMetrics) + "]" +
                 ", gatewayMetricsExpected=[" + string.Join(",", expected.GatewayMetrics) + "]" +
@@ -297,6 +515,8 @@ namespace EzGetBmcIp
             {
                 IsSuccess = success,
                 ModeMatches = modeMatches,
+                ActiveModeMatches = activeModeMatches,
+                PersistentModeMatches = persistentModeMatches,
                 AddressesMatch = addressesMatch,
                 GatewaysMatch = gatewaysMatch,
                 DnsMatches = dnsMatches,
@@ -443,114 +663,10 @@ namespace EzGetBmcIp
                 }
             }
 
-            if (releaseToolLease)
-            {
-                ResetRegistryLeaseCache(adapter, outputs);
-                await Task.Delay(800, cancellationToken);
-                ResetRegistryLeaseCache(adapter, outputs);
-            }
-
-            try
-            {
-                string keyPath;
-                using (var key = OpenAdapterRegistryKey(adapter, true, out keyPath))
-                {
-                    if (key != null)
-                    {
-                        AddRestoreOutput(outputs, "Registry path: " + keyPath);
-                        if (releaseToolLease)
-                        {
-                            ResetDhcpLeaseCache(key, outputs);
-                        }
-
-                        key.SetValue("EnableDHCP", 1, Microsoft.Win32.RegistryValueKind.DWord);
-                        key.SetValue("IPAddress", new[] { "0.0.0.0" }, Microsoft.Win32.RegistryValueKind.MultiString);
-                        key.SetValue("SubnetMask", new[] { "0.0.0.0" }, Microsoft.Win32.RegistryValueKind.MultiString);
-                        key.SetValue("DefaultGateway", new string[0], Microsoft.Win32.RegistryValueKind.MultiString);
-                        key.SetValue("NameServer", "", Microsoft.Win32.RegistryValueKind.String);
-                        AddRestoreOutput(outputs, "Registry reset: OK");
-                    }
-                    else
-                    {
-                        AddRestoreOutput(outputs, "Registry path not found. Tried: " + keyPath);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                AddRestoreOutput(outputs, "Registry reset error: " + ex.Message);
-            }
-
             return string.Join(Environment.NewLine, outputs);
         }
 
-        private static void ResetRegistryLeaseCache(WiredAdapter adapter, List<string> outputs)
-        {
-            try
-            {
-                string keyPath;
-                using (var key = OpenAdapterRegistryKey(adapter, true, out keyPath))
-                {
-                    if (key == null)
-                    {
-                        AddRestoreOutput(outputs, "Registry lease cache path not found. Tried: " + keyPath);
-                        return;
-                    }
-
-                    AddRestoreOutput(outputs, "Registry lease cache path: " + keyPath);
-                    ResetDhcpLeaseCache(key, outputs);
-                }
-            }
-            catch (Exception ex)
-            {
-                AddRestoreOutput(outputs, "Registry lease cache reset error: " + ex.Message);
-            }
-        }
-
-        private static bool HasRegistryToolLease(WiredAdapter adapter)
-        {
-            try
-            {
-                string keyPath;
-                using (var key = OpenAdapterRegistryKey(adapter, false, out keyPath))
-                {
-                    if (key == null)
-                    {
-                        Logger?.Invoke("DHCP restore registry verify: path not found. Tried: " + keyPath);
-                        return false;
-                    }
-
-                    var dhcpIp = RegistryValueToText(key.GetValue("DhcpIPAddress"));
-                    var dhcpServer = RegistryValueToText(key.GetValue("DhcpServer"));
-                    var dhcpGateway = RegistryValueToText(key.GetValue("DhcpDefaultGateway"));
-                    var dhcpDns = RegistryValueToText(key.GetValue("DhcpNameServer"));
-                    var dhcpOptions = RegistryValueToText(key.GetValue("DhcpInterfaceOptions"));
-                    var dhcpMaskOpt = RegistryValueToText(key.GetValue("DhcpSubnetMaskOpt"));
-                    var text = "DhcpIPAddress=" + dhcpIp
-                        + ", DhcpServer=" + dhcpServer
-                        + ", DhcpDefaultGateway=" + dhcpGateway
-                        + ", DhcpNameServer=" + dhcpDns
-                        + ", DhcpInterfaceOptions=" + dhcpOptions
-                        + ", DhcpSubnetMaskOpt=" + dhcpMaskOpt;
-
-                    var stale = IsLeaseValuePresent(dhcpIp)
-                        || IsLeaseValuePresent(dhcpServer)
-                        || IsLeaseValuePresent(dhcpGateway)
-                        || IsLeaseValuePresent(dhcpDns)
-                        || IsLeaseValuePresent(dhcpMaskOpt)
-                        || !string.IsNullOrWhiteSpace(dhcpOptions);
-                    Logger?.Invoke("DHCP restore registry verify: path=" + keyPath + ", stale=" + stale + ", values=" + text);
-                    return stale;
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger?.Invoke("DHCP restore registry verify error: " + ex.Message);
-                return false;
-            }
-        }
-
-        private static Microsoft.Win32.RegistryKey OpenAdapterRegistryKey(WiredAdapter adapter, bool writable, out string attemptedPaths)
+        private static Microsoft.Win32.RegistryKey OpenAdapterRegistryKey(WiredAdapter adapter, out string attemptedPaths)
         {
             var candidates = GetAdapterRegistryKeyNames(adapter)
                 .Select(name => @"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\" + name)
@@ -559,7 +675,7 @@ namespace EzGetBmcIp
 
             foreach (var path in candidates)
             {
-                var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(path, writable);
+                var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(path, false);
                 if (key != null)
                 {
                     attemptedPaths = path;
@@ -590,48 +706,6 @@ namespace EzGetBmcIp
             }
         }
 
-        private static void ResetDhcpLeaseCache(Microsoft.Win32.RegistryKey key, List<string> outputs)
-        {
-            try
-            {
-                AddRestoreOutput(outputs,
-                    "Registry DHCP lease before reset: DhcpIPAddress=" + RegistryValueToText(key.GetValue("DhcpIPAddress")) +
-                    ", DhcpServer=" + RegistryValueToText(key.GetValue("DhcpServer")) +
-                    ", DhcpDefaultGateway=" + RegistryValueToText(key.GetValue("DhcpDefaultGateway")) +
-                    ", DhcpNameServer=" + RegistryValueToText(key.GetValue("DhcpNameServer")));
-
-                key.SetValue("DhcpIPAddress", "0.0.0.0", Microsoft.Win32.RegistryValueKind.String);
-                key.SetValue("DhcpSubnetMask", "0.0.0.0", Microsoft.Win32.RegistryValueKind.String);
-                key.SetValue("DhcpServer", "0.0.0.0", Microsoft.Win32.RegistryValueKind.String);
-                key.SetValue("DhcpDefaultGateway", new string[0], Microsoft.Win32.RegistryValueKind.MultiString);
-                key.SetValue("DhcpNameServer", "", Microsoft.Win32.RegistryValueKind.String);
-                key.SetValue("DhcpDomain", "", Microsoft.Win32.RegistryValueKind.String);
-                key.SetValue("DhcpSubnetMaskOpt", new string[0], Microsoft.Win32.RegistryValueKind.MultiString);
-                key.SetValue("DefaultGatewayMetric", new string[0], Microsoft.Win32.RegistryValueKind.MultiString);
-                DeleteRegistryValue(key, "Lease");
-                DeleteRegistryValue(key, "LeaseObtainedTime");
-                DeleteRegistryValue(key, "LeaseTerminatesTime");
-                DeleteRegistryValue(key, "T1");
-                DeleteRegistryValue(key, "T2");
-                DeleteRegistryValue(key, "DhcpInterfaceOptions");
-                DeleteRegistryValue(key, "DhcpGatewayHardware");
-                DeleteRegistryValue(key, "DhcpGatewayHardwareCount");
-                AddRestoreOutput(outputs, "Registry DHCP lease reset: OK");
-            }
-            catch (Exception ex)
-            {
-                AddRestoreOutput(outputs, "Registry DHCP lease reset error: " + ex.Message);
-            }
-        }
-
-        private static void DeleteRegistryValue(Microsoft.Win32.RegistryKey key, string name)
-        {
-            try
-            {
-                key.DeleteValue(name, false);
-            }
-            catch { }
-        }
 
         private static string RegistryValueToText(object value)
         {
@@ -644,21 +718,6 @@ namespace EzGetBmcIp
             if (bytes != null)
                 return BitConverter.ToString(bytes).Replace("-", "");
             return value.ToString();
-        }
-
-        private static bool IsLeaseValuePresent(string value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-                return false;
-            var parts = value.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(v => v.Trim())
-                .Where(v => v.Length > 0)
-                .ToList();
-            if (parts.Count == 0)
-                return false;
-            return parts.Any(v =>
-                !v.Equals("0.0.0.0", StringComparison.OrdinalIgnoreCase)
-                && !v.Equals("255.255.255.255", StringComparison.OrdinalIgnoreCase));
         }
 
         private static void AddRestoreOutput(List<string> outputs, string message)
@@ -677,12 +736,59 @@ namespace EzGetBmcIp
                     || n.Description.Equals(adapter.Description, StringComparison.OrdinalIgnoreCase));
         }
 
+        internal static bool ShouldPreserveCapturedAddress(
+            IPAddress address,
+            PrefixOrigin prefixOrigin,
+            SuffixOrigin suffixOrigin,
+            bool persistentDhcpEnabled)
+        {
+            var ignored = persistentDhcpEnabled;
+            var bytes = address.GetAddressBytes();
+            var isLinkLocal = bytes.Length == 4 && bytes[0] == 169 && bytes[1] == 254;
+            if (!isLinkLocal)
+                return true;
+
+            if (prefixOrigin == PrefixOrigin.Manual || suffixOrigin == SuffixOrigin.Manual)
+                return true;
+
+            var confirmedAutomatic = prefixOrigin == PrefixOrigin.WellKnown
+                || prefixOrigin == PrefixOrigin.Dhcp
+                || suffixOrigin == SuffixOrigin.WellKnown
+                || suffixOrigin == SuffixOrigin.OriginDhcp
+                || suffixOrigin == SuffixOrigin.LinkLayerAddress
+                || suffixOrigin == SuffixOrigin.Random;
+            return !confirmedAutomatic;
+        }
+
+        public static bool IsCurrentlyConfirmedAutomaticApipa(
+            WiredAdapter adapter,
+            IPAddress address)
+        {
+            try
+            {
+                var ni = FindNetworkInterface(adapter);
+                if (ni == null)
+                    return false;
+                var current = ni.GetIPProperties().UnicastAddresses
+                    .FirstOrDefault(item => item.Address.Equals(address));
+                return current != null
+                    && !ShouldPreserveCapturedAddress(
+                        current.Address, current.PrefixOrigin, current.SuffixOrigin, true);
+            }
+            catch (Exception ex)
+            {
+                if (Logger != null)
+                    Logger("Legacy APIPA origin check failed; address preserved: " + ex.Message);
+                return false;
+            }
+        }
+
         private static bool IsDnsAutomatic(WiredAdapter adapter, bool fallback)
         {
             try
             {
                 string keyPath;
-                using (var key = OpenAdapterRegistryKey(adapter, false, out keyPath))
+                using (var key = OpenAdapterRegistryKey(adapter, out keyPath))
                 {
                     if (key == null)
                         return fallback;
@@ -702,7 +808,7 @@ namespace EzGetBmcIp
             try
             {
                 string keyPath;
-                using (var key = OpenAdapterRegistryKey(adapter, false, out keyPath))
+                using (var key = OpenAdapterRegistryKey(adapter, out keyPath))
                 {
                     if (key != null)
                     {
@@ -747,7 +853,7 @@ namespace EzGetBmcIp
             try
             {
                 string keyPath;
-                using (var key = OpenAdapterRegistryKey(adapter, false, out keyPath))
+                using (var key = OpenAdapterRegistryKey(adapter, out keyPath))
                 {
                     if (key == null)
                         return new int[0];
@@ -781,13 +887,13 @@ namespace EzGetBmcIp
                 "address=" + primary.Address + " mask=" + primary.Mask;
 
             if (originalConfig.Gateways.Count == 0)
-                return command + " gateway=none";
+                return command + " gateway=none store=persistent";
 
             command += " gateway=" + originalConfig.Gateways[0];
             if (originalConfig.GatewayMetrics.Count > 0)
                 command += " gwmetric=" + originalConfig.GatewayMetrics[0].ToString(CultureInfo.InvariantCulture);
 
-            return command;
+            return command + " store=persistent";
         }
 
         internal static bool GatewayMetricsMatch(
@@ -800,39 +906,35 @@ namespace EzGetBmcIp
                 || current.SequenceEqual(expected);
         }
 
-        private static void RestoreGatewayMetrics(WiredAdapter adapter, IReadOnlyCollection<int> gatewayMetrics)
-        {
-            try
-            {
-                string keyPath;
-                using (var key = OpenAdapterRegistryKey(adapter, true, out keyPath))
-                {
-                    if (key == null)
-                    {
-                        if (Logger != null)
-                            Logger("Gateway metric restore skipped because the adapter registry key was not found. Tried: " + keyPath);
-                        return;
-                    }
-
-                    var values = gatewayMetrics
-                        .Select(metric => metric.ToString(CultureInfo.InvariantCulture))
-                        .ToArray();
-                    key.SetValue("DefaultGatewayMetric", values, Microsoft.Win32.RegistryValueKind.MultiString);
-                    if (Logger != null)
-                        Logger("Gateway metric restore persisted: [" + string.Join(",", values) + "]");
-                }
-            }
-            catch (Exception ex)
-            {
-                if (Logger != null)
-                    Logger("Gateway metric restore failed: " + ex.Message);
-            }
-        }
-
         private static bool IpSetEquals(IEnumerable<IPAddress> current, IEnumerable<IPAddress> expected)
         {
             return new HashSet<string>(current.Select(ip => ip.ToString()), StringComparer.OrdinalIgnoreCase)
                 .SetEquals(expected.Select(ip => ip.ToString()));
+        }
+
+        private static bool Ipv4AddressSetEquals(
+            IEnumerable<AdapterIpv4Address> current,
+            IEnumerable<AdapterIpv4Address> expected)
+        {
+            return new HashSet<string>(
+                    current.Select(item => item.Address + "/" + item.Mask),
+                    StringComparer.OrdinalIgnoreCase)
+                .SetEquals(expected.Select(item => item.Address + "/" + item.Mask));
+        }
+
+        private static string FormatIpv4Addresses(IEnumerable<AdapterIpv4Address> addresses)
+        {
+            return string.Join(",", addresses.Select(item =>
+                item.Address + "/" + item.Mask +
+                "{" + item.PrefixOrigin + "/" + item.SuffixOrigin + "/" + item.AddressState + "}"));
+        }
+
+        private static string BuildDisableDhcpScript(WiredAdapter adapter)
+        {
+            var name = adapter.Name.Replace("'", "''");
+            return "$ErrorActionPreference='Continue'; $out=@(); $name='" + name + "'; " +
+                "try { Set-NetIPInterface -InterfaceAlias $name -AddressFamily IPv4 -Dhcp Disabled -ErrorAction Stop; $out+='Set-NetIPInterface Dhcp Disabled OK' } " +
+                "catch { $out+='Set-NetIPInterface Dhcp Disabled ERR: ' + $_.Exception.Message }; $out";
         }
 
         private static async Task ClearDnsForToolAsync(WiredAdapter adapter, CancellationToken cancellationToken)
@@ -987,9 +1089,27 @@ namespace EzGetBmcIp
             return TrimBraces(left).Equals(TrimBraces(right), StringComparison.OrdinalIgnoreCase);
         }
 
+        private static string NormalizeMac(string value)
+        {
+            return new string((value ?? "").Where(char.IsLetterOrDigit).ToArray());
+        }
+
         private static Task<string> RunNetshAsync(string arguments, CancellationToken cancellationToken)
         {
             return RunProcessAsync("netsh.exe", arguments, cancellationToken, true);
+        }
+
+        private static Task<string> RunPowerShellAsync(
+            string command,
+            CancellationToken cancellationToken,
+            bool throwOnError)
+        {
+            var encodedCommand = Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
+            return RunProcessAsync(
+                "powershell.exe",
+                "-NoProfile -OutputFormat Text -ExecutionPolicy Bypass -EncodedCommand " + encodedCommand,
+                cancellationToken,
+                throwOnError);
         }
 
         private static async Task<string> RunProcessAsync(

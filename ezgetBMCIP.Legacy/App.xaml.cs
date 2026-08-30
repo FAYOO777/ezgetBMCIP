@@ -22,10 +22,10 @@ namespace EzGetBmcIp.Legacy
 
             int ownerProcessId;
             string recoverySessionId;
-            if (NetworkRecoveryStore.TryParseWatchdogArguments(
-                e.Args, out ownerProcessId, out recoverySessionId))
+            if (!ShouldCreateInteractiveWindow(e.Args)
+                && NetworkRecoveryStore.TryParseWatchdogArguments(
+                    e.Args, out ownerProcessId, out recoverySessionId))
             {
-                StartupUri = null;
                 ShutdownMode = ShutdownMode.OnExplicitShutdown;
                 base.OnStartup(e);
 
@@ -51,6 +51,18 @@ namespace EzGetBmcIp.Legacy
 
             LogError("Legacy App started");
             base.OnStartup(e);
+
+            var window = new MainWindow();
+            MainWindow = window;
+            window.Show();
+        }
+
+        internal static bool ShouldCreateInteractiveWindow(string[] args)
+        {
+            int ownerProcessId;
+            string sessionId;
+            return !NetworkRecoveryStore.TryParseWatchdogArguments(
+                args, out ownerProcessId, out sessionId);
         }
 
         private static void LogError(string message)

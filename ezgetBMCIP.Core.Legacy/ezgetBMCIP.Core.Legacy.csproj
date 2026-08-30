@@ -4,7 +4,7 @@
     <LangVersion>8</LangVersion>
     <RootNamespace>EzGetBmcIp</RootNamespace>
     <AssemblyName>ezgetBMCIP.Core.Legacy</AssemblyName>
-    <Version>1.5.0</Version>
+    <Version>1.5.1</Version>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System.Management" />

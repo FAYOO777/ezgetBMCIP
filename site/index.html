@@ -418,15 +418,40 @@
                 padding-left: 20px;
                 margin: 0;
             }
+            .tutorial-gallery {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 18px;
+                margin-top: 14px;
+            }
+            .tutorial-gallery-single {
+                grid-template-columns: minmax(0, 640px);
+                justify-content: center;
+            }
+            .tutorial-figure {
+                min-width: 0;
+                margin: 0;
+            }
+            .tutorial-image-link {
+                display: block;
+                border-radius: 12px;
+                outline-offset: 4px;
+            }
             .tutorial-shot {
                 display: block;
                 width: 100%;
-                max-width: 640px;
-                margin: 14px auto 0;
+                margin: 0;
                 border-radius: 12px;
                 border: 1px solid var(--border);
                 box-shadow: var(--shadow-md);
                 background: #111827;
+            }
+            .tutorial-caption {
+                margin-top: 8px;
+                color: var(--text-muted);
+                font-size: 12px;
+                line-height: 1.6;
+                text-align: center;
             }
             .tutorial-warning {
                 color: var(--warn);
@@ -692,6 +717,9 @@
                 .tutorial-step {
                     padding: 22px 0;
                 }
+                .tutorial-gallery {
+                    grid-template-columns: minmax(0, 1fr);
+                }
                 .back-to-top {
                     right: 16px;
                     bottom: 16px;
@@ -766,12 +794,12 @@
             <div id="latest-panel" class="tab-panel active"></div>
             <div id="tutorial-panel" class="tab-panel">
                 <div class="tutorial-card">
-                    <h2>Baby Step 使用教程</h2>
+                    <h2>Baby Step 使用教程（v1.5.1）</h2>
                     <p class="tutorial-lead">
                         适用场景：笔记本用网线直连服务器的 IPMI/BMC 管理口。工具会临时接管你选择的本机网卡，给 BMC 分配临时 DHCP 地址，并打开管理页面。
                     </p>
                     <div class="tutorial-note">
-                        开始前确认两件事：软件需要管理员权限；网线要插到服务器的 IPMI/BMC 专用管理口，不要插到普通业务网口。退出时工具只会恢复所选本机网卡，不会主动还原 BMC 网络设置。
+                        开始前确认两件事：软件需要管理员权限；网线只能直连服务器的 IPMI/BMC 专用管理口，不要连接交换机、普通业务网口或已有局域网。工具退出时只恢复所选本机网卡，不会主动还原 BMC 网络设置。
                     </div>
 
                     <section class="tutorial-step">
@@ -787,7 +815,20 @@
                                 <li>如果机器有多个有线网卡，后面要选连接 IPMI/BMC 的那一块。</li>
                             </ul>
                         </div>
-                        <img class="tutorial-shot" src="assets/tutorial/step-0-welcome.png" alt="欢迎页和使用注意事项" loading="lazy" />
+                        <div class="tutorial-gallery">
+                            <figure class="tutorial-figure">
+                                <a class="tutorial-image-link" href="assets/tutorial/step-0-welcome.png" target="_blank" rel="noopener">
+                                    <img class="tutorial-shot" src="assets/tutorial/step-0-welcome.png" alt="v1.5.1 欢迎页和使用前说明" loading="lazy" />
+                                </a>
+                                <figcaption class="tutorial-caption">阅读使用说明后点击“下一步”。</figcaption>
+                            </figure>
+                            <figure class="tutorial-figure">
+                                <a class="tutorial-image-link" href="assets/tutorial/step-0-risk-consent.png" target="_blank" rel="noopener">
+                                    <img class="tutorial-shot" src="assets/tutorial/step-0-risk-consent.png" alt="使用风险确认窗口" loading="lazy" />
+                                </a>
+                                <figcaption class="tutorial-caption">确认直连场景，勾选风险告知后继续。</figcaption>
+                            </figure>
+                        </div>
                     </section>
 
                     <section class="tutorial-step">
@@ -804,62 +845,129 @@
                                 <li>BMC 获得的是临时 DHCP 地址；工具退出不会主动把 BMC 改回原网络设置。</li>
                             </ul>
                         </div>
-                        <img class="tutorial-shot" src="assets/tutorial/step-1-select-adapter.png" alt="选择目标网卡并开始" loading="lazy" />
+                        <div class="tutorial-gallery">
+                            <figure class="tutorial-figure">
+                                <a class="tutorial-image-link" href="assets/tutorial/step-1-select-adapter.png" target="_blank" rel="noopener">
+                                    <img class="tutorial-shot" src="assets/tutorial/step-1-select-adapter.png" alt="选择连接 BMC 的目标有线网卡" loading="lazy" />
+                                </a>
+                                <figcaption class="tutorial-caption">选择连接 IPMI/BMC 的有线网卡。</figcaption>
+                            </figure>
+                            <figure class="tutorial-figure">
+                                <a class="tutorial-image-link" href="assets/tutorial/step-1-advanced-settings.png" target="_blank" rel="noopener">
+                                    <img class="tutorial-shot" src="assets/tutorial/step-1-advanced-settings.png" alt="展开高级设置修改临时网段" loading="lazy" />
+                                </a>
+                                <figcaption class="tutorial-caption">只有网段冲突时才需要调整高级设置。</figcaption>
+                            </figure>
+                            <figure class="tutorial-figure">
+                                <a class="tutorial-image-link" href="assets/tutorial/step-1-network-consent.png" target="_blank" rel="noopener">
+                                    <img class="tutorial-shot" src="assets/tutorial/step-1-network-consent.png" alt="核对原始网卡配置和临时网络配置" loading="lazy" />
+                                </a>
+                                <figcaption class="tutorial-caption">核对原配置、临时地址和恢复范围后再确认。</figcaption>
+                            </figure>
+                        </div>
                     </section>
 
                     <section class="tutorial-step">
                         <div>
                             <div class="step-kicker">Step 2</div>
-                            <h3>按提示插入网线</h3>
+                            <h3>先等待 Link UP，再配置本机网卡</h3>
                             <p>
-                                软件会先配置网卡并启动 DHCP 服务，然后等待链路 UP。此时把网线连接到服务器 IPMI/BMC 管理口。
+                                工具会先等待网线 Link UP。检测到链路之前不会修改本机网卡，也不会启动 DHCP 服务；此时取消或退出可以直接关闭，无需恢复网卡。Link UP 后工具才开始临时配置网卡并启动 DHCP 服务。
                             </p>
                             <ul>
                                 <li>如果一直停在这里，优先检查网线、网口位置、服务器管理口是否通电。</li>
                                 <li>直连测试时不要让这根线同时接交换机。</li>
                             </ul>
                         </div>
-                        <img class="tutorial-shot" src="assets/tutorial/step-2-wait-link.png" alt="等待插入网线" loading="lazy" />
+                        <div class="tutorial-gallery">
+                            <figure class="tutorial-figure">
+                                <a class="tutorial-image-link" href="assets/tutorial/step-2-wait-link.png" target="_blank" rel="noopener">
+                                    <img class="tutorial-shot" src="assets/tutorial/step-2-wait-link.png" alt="等待 IPMI BMC 网线 Link UP" loading="lazy" />
+                                </a>
+                                <figcaption class="tutorial-caption">Link UP 前不会修改本机网卡。</figcaption>
+                            </figure>
+                            <figure class="tutorial-figure">
+                                <a class="tutorial-image-link" href="assets/tutorial/step-2-link-up.png" target="_blank" rel="noopener">
+                                    <img class="tutorial-shot" src="assets/tutorial/step-2-link-up.png" alt="检测到网线 Link UP" loading="lazy" />
+                                </a>
+                                <figcaption class="tutorial-caption">检测到链路后才进入网络配置阶段。</figcaption>
+                            </figure>
+                            <figure class="tutorial-figure">
+                                <a class="tutorial-image-link" href="assets/tutorial/step-2-configuring-adapter.png" target="_blank" rel="noopener">
+                                    <img class="tutorial-shot" src="assets/tutorial/step-2-configuring-adapter.png" alt="正在临时配置本机网卡" loading="lazy" />
+                                </a>
+                                <figcaption class="tutorial-caption">工具开始配置临时静态地址并启动 DHCP 服务。</figcaption>
+                            </figure>
+                        </div>
                     </section>
 
                     <section class="tutorial-step">
                         <div>
                             <div class="step-kicker">Step 3</div>
-                            <h3>链路 UP 后等待 BMC 获取地址</h3>
+                            <h3>允许必要的防火墙访问，等待 BMC 获取地址</h3>
                             <p>
-                                检测到链路后，工具继续等待 BMC 发出 DHCP 请求。正常情况下会在几十秒内完成，具体取决于 BMC 启动和 DHCP 重试节奏。
+                                首次运行时 Windows 可能弹出防火墙提示。确认程序名称为 ezgetBMCIP 且当前是直连场景后，点击“允许访问”。直连网卡通常会被识别为公用或未识别网络，因此需要允许对应网络类型，否则工具可能收不到 BMC 的 DHCP 请求。
                             </p>
+                            <p>随后等待 BMC 获取地址，正常情况下会在几十秒内完成，具体取决于 BMC 启动和 DHCP 重试节奏。</p>
                         </div>
-                        <img class="tutorial-shot" src="assets/tutorial/step-3-link-up.png" alt="链路已连接" loading="lazy" />
+                        <div class="tutorial-gallery">
+                            <figure class="tutorial-figure">
+                                <a class="tutorial-image-link" href="assets/tutorial/step-3-firewall.png" target="_blank" rel="noopener">
+                                    <img class="tutorial-shot" src="assets/tutorial/step-3-firewall.png" alt="Windows Defender 防火墙允许 ezgetBMCIP 访问网络" loading="lazy" />
+                                </a>
+                                <figcaption class="tutorial-caption">首次运行时按系统提示允许 ezgetBMCIP 访问。</figcaption>
+                            </figure>
+                            <figure class="tutorial-figure">
+                                <a class="tutorial-image-link" href="assets/tutorial/step-3-wait-bmc.png" target="_blank" rel="noopener">
+                                    <img class="tutorial-shot" src="assets/tutorial/step-3-wait-bmc.png" alt="等待 BMC 发出 DHCP 请求并获取地址" loading="lazy" />
+                                </a>
+                                <figcaption class="tutorial-caption">保持网线连接，等待 BMC 获取临时地址。</figcaption>
+                            </figure>
+                        </div>
                     </section>
 
                     <section class="tutorial-step">
                         <div>
                             <div class="step-kicker">Step 4</div>
-                            <h3>浏览器打开 BMC 页面后再操作</h3>
+                            <h3>等待浏览器打开 BMC 管理页面</h3>
                             <p>
-                                页面打开后，说明 DHCP 分配和浏览器启动都已完成。此时可以登录 BMC，按你的目标查看硬件状态、配置远程控制或执行维护操作。
+                                BMC 获得临时地址后，工具会优先检测 HTTPS，并自动打开可访问的管理页面。页面打开后即可登录 BMC，查看硬件状态、配置远程控制或执行维护操作。
                             </p>
                             <p class="tutorial-warning">
-                                不要在 BMC 页面打开后直接拔线退出。先完成 BMC 操作，再回到工具点击“完成 / 退出”。
+                                不要在 BMC 页面打开后直接拔线或关闭工具。先完成 BMC 操作，再回到工具执行恢复退出。
                             </p>
                         </div>
-                        <img class="tutorial-shot" src="assets/tutorial/step-4-opened.png" alt="BMC 管理页面已打开" loading="lazy" />
+                        <div class="tutorial-gallery tutorial-gallery-single">
+                            <figure class="tutorial-figure">
+                                <a class="tutorial-image-link" href="assets/tutorial/step-4-opening-bmc.png" target="_blank" rel="noopener">
+                                    <img class="tutorial-shot" src="assets/tutorial/step-4-opening-bmc.png" alt="BMC 地址已分配并正在打开管理页面" loading="lazy" />
+                                </a>
+                                <figcaption class="tutorial-caption">地址分配完成后，工具会检测并打开管理页面。</figcaption>
+                            </figure>
+                        </div>
                     </section>
 
                     <section class="tutorial-step">
                         <div>
                             <div class="step-kicker">Step 5</div>
-                            <h3>完成后退出，等待本机网卡恢复</h3>
+                            <h3>完成操作后，恢复本机网卡并退出</h3>
                             <p>
-                                点击“完成 / 退出”后，工具会关闭内置 DHCP 服务，并恢复、验证使用工具前所选本机网卡的已记录 IPv4 与 DNS 设置。原 DHCP 网卡会重新自动获取租约，不保证回到相同地址；原静态网卡会写回已记录的 IPv4、网关和 DNS。确认恢复完成后再把网线接回交换机或原网络。
+                                BMC 页面确认可访问后，回到工具点击右下角“恢复网卡并退出”。工具会关闭内置 DHCP 服务，并恢复、验证使用前所选本机网卡的已记录 IPv4、网关和 DNS 设置。原 DHCP 网卡会重新自动获取租约，不保证回到相同地址；原静态网卡会写回已记录配置。
                             </p>
                             <ul>
+                                <li>请等待工具确认恢复完成并正常退出，再拔线或把本机网卡接回交换机、原网络。</li>
                                 <li>BMC 的临时 DHCP 地址不会由本工具主动回退；请按现场网络方案重新接回 BMC。</li>
-                                <li>如果恢复失败，窗口会保留错误提示，不会静默退出。</li>
+                                <li>如果恢复失败，窗口会保留错误提示；不要直接拔线或接回原网络，请按界面提示再次执行完整恢复。</li>
                             </ul>
                         </div>
-                        <img class="tutorial-shot" src="assets/tutorial/step-5-cleanup.png" alt="退出并恢复原始网卡配置" loading="lazy" />
+                        <div class="tutorial-gallery tutorial-gallery-single">
+                            <figure class="tutorial-figure">
+                                <a class="tutorial-image-link" href="assets/tutorial/step-5-finish-restore.png" target="_blank" rel="noopener">
+                                    <img class="tutorial-shot" src="assets/tutorial/step-5-finish-restore.png" alt="BMC 页面已打开并显示恢复网卡并退出按钮" loading="lazy" />
+                                </a>
+                                <figcaption class="tutorial-caption">完成 BMC 操作后，点击右下角“恢复网卡并退出”。</figcaption>
+                            </figure>
+                        </div>
                     </section>
                 </div>
             </div>

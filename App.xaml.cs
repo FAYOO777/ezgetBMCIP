@@ -14,10 +14,10 @@ public partial class App : Application
     {
         WireLogger();
 
-        if (NetworkRecoveryStore.TryParseWatchdogArguments(
-            e.Args, out var ownerProcessId, out var recoverySessionId))
+        if (!ShouldCreateInteractiveWindow(e.Args)
+            && NetworkRecoveryStore.TryParseWatchdogArguments(
+                e.Args, out var ownerProcessId, out var recoverySessionId))
         {
-            StartupUri = null;
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
             base.OnStartup(e);
 
@@ -55,6 +55,15 @@ public partial class App : Application
         AppLogger.Log("Running as administrator");
         ApplicationThemeManager.ApplySystemTheme();
         base.OnStartup(e);
+
+        var window = new MainWindow();
+        MainWindow = window;
+        window.Show();
+    }
+
+    internal static bool ShouldCreateInteractiveWindow(string[] args)
+    {
+        return !NetworkRecoveryStore.TryParseWatchdogArguments(args, out _, out _);
     }
 
     private static void WireLogger()

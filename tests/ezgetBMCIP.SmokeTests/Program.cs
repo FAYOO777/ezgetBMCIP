@@ -2,6 +2,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Globalization;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
@@ -28,8 +29,14 @@ internal static class Program
             }
 
             RecoverySnapshotRoundTrips();
+            RecoverySnapshotSchemaV1RemainsCompatible();
             RecoverySnapshotMatchesAdapterIdentity();
             StaticRestoreUsesNamedGatewayMetric();
+            AutomaticApipaIsExcludedButManualLinkLocalIsPreserved();
+            StaticFallbackOnlyRunsForModeMismatch();
+            await LinkCancellationDoesNotEnterMutationStageAsync();
+            await CancellationAfterMutationRequiresRecoveryAsync();
+            WatchdogStartupDoesNotCreateInteractiveWindow();
             DhcpModeUsesRegistryValues();
             ConsentNoticeDescribesNetworkChanges();
             ConsentDialogRequiresActiveAcknowledgement();
@@ -67,7 +74,8 @@ internal static class Program
             DhcpEnabled = false,
             DnsServersFromDhcp = false
         };
-        staticConfig.StaticAddresses.Add((IPAddress.Parse("192.168.1.20"), IPAddress.Parse("255.255.255.0")));
+        staticConfig.StaticAddresses.Add(new AdapterIpv4Address(
+            IPAddress.Parse("192.168.1.20"), IPAddress.Parse("255.255.255.0")));
         staticConfig.Gateways.Add(IPAddress.Parse("192.168.1.1"));
         staticConfig.DnsServers.Add(IPAddress.Parse("1.1.1.1"));
         staticConfig.DnsServers.Add(IPAddress.Parse("8.8.8.8"));
@@ -87,7 +95,8 @@ internal static class Program
             "The temporary DNS clearing was not disclosed.");
 
         var dhcpConfig = AdapterOriginalConfig.CreateDhcp();
-        dhcpConfig.StaticAddresses.Add((IPAddress.Parse("10.10.10.25"), IPAddress.Parse("255.255.255.0")));
+        dhcpConfig.StaticAddresses.Add(new AdapterIpv4Address(
+            IPAddress.Parse("10.10.10.25"), IPAddress.Parse("255.255.255.0")));
         dhcpConfig.Gateways.Add(IPAddress.Parse("10.10.10.1"));
         dhcpConfig.DnsServers.Add(IPAddress.Parse("10.10.10.53"));
         var dhcpNotice = ConsentNotice.CreateNetworkChange(adapter, subnet, dhcpConfig);
@@ -353,8 +362,22 @@ internal static class Program
             DnsServersFromDhcp = false,
             StaticAddresses = new List<RecoveryAddress>
             {
-                new RecoveryAddress { Address = "192.168.50.20", Mask = "255.255.255.0" },
-                new RecoveryAddress { Address = "192.168.50.21", Mask = "255.255.255.0" }
+                new RecoveryAddress
+                {
+                    Address = "192.168.50.20",
+                    Mask = "255.255.255.0",
+                    PrefixOrigin = PrefixOrigin.Manual.ToString(),
+                    SuffixOrigin = SuffixOrigin.Manual.ToString(),
+                    AddressState = DuplicateAddressDetectionState.Preferred.ToString()
+                },
+                new RecoveryAddress
+                {
+                    Address = "192.168.50.21",
+                    Mask = "255.255.255.0",
+                    PrefixOrigin = PrefixOrigin.Manual.ToString(),
+                    SuffixOrigin = SuffixOrigin.Manual.ToString(),
+                    AddressState = DuplicateAddressDetectionState.Preferred.ToString()
+                }
             },
             Gateways = new List<string> { "192.168.50.1" },
             GatewayMetrics = new List<int> { 25 },
@@ -372,10 +395,43 @@ internal static class Program
         Assert(!restoredConfig.DhcpEnabled, "Static mode was not preserved.");
         Assert(!restoredConfig.DnsServersFromDhcp, "Manual DNS mode was not preserved.");
         Assert(restoredConfig.StaticAddresses.Count == 2, "Static addresses were not preserved.");
+        Assert(restoredConfig.StaticAddresses.All(item => item.PrefixOrigin == PrefixOrigin.Manual),
+            "Schema v2 address origins were not preserved.");
         Assert(restoredConfig.Gateways.Single().ToString() == "192.168.50.1", "Gateway was not preserved.");
         Assert(restoredConfig.GatewayMetrics.Single() == 25, "Gateway metric was not preserved.");
         Assert(restoredConfig.DnsServers.Count == 2, "DNS servers were not preserved.");
         Assert(restoredSubnet.ServerIp == "10.77.77.1", "Tool subnet was not preserved.");
+    }
+
+    private static void RecoverySnapshotSchemaV1RemainsCompatible()
+    {
+        var snapshot = new NetworkRecoverySnapshot
+        {
+            SchemaVersion = 1,
+            SessionId = Guid.NewGuid().ToString("N"),
+            AdapterName = "Ethernet",
+            AdapterId = "11111111-2222-3333-4444-555555555555",
+            ToolServerIp = "10.77.77.1",
+            ToolLeaseIp = "10.77.77.100",
+            DhcpEnabled = false,
+            StaticAddresses = new List<RecoveryAddress>
+            {
+                new RecoveryAddress { Address = "169.254.170.39", Mask = "255.255.0.0" }
+            }
+        };
+
+        var serializer = new XmlSerializer(typeof(NetworkRecoverySnapshot));
+        using var stream = new MemoryStream();
+        serializer.Serialize(stream, snapshot);
+        stream.Position = 0;
+        var restored = (NetworkRecoverySnapshot)serializer.Deserialize(stream)!;
+        var config = restored.ToOriginalConfig();
+
+        Assert(restored.SchemaVersion == 1, "Schema v1 marker was not preserved.");
+        Assert(config.StaticAddresses.Single().Address.ToString() == "169.254.170.39",
+            "A legacy link-local address was discarded without proof that it was automatic APIPA.");
+        Assert(config.StaticAddresses.Single().PrefixOrigin == PrefixOrigin.Other,
+            "Missing v1 origin metadata must use the conservative unknown origin.");
     }
 
     private static void RecoverySnapshotMatchesAdapterIdentity()
@@ -406,7 +462,8 @@ internal static class Program
             DhcpEnabled = false,
             DnsServersFromDhcp = false
         };
-        config.StaticAddresses.Add((IPAddress.Parse("192.168.50.20"), IPAddress.Parse("255.255.255.0")));
+        config.StaticAddresses.Add(new AdapterIpv4Address(
+            IPAddress.Parse("192.168.50.20"), IPAddress.Parse("255.255.255.0")));
         config.Gateways.Add(IPAddress.Parse("192.168.50.1"));
         config.GatewayMetrics.Add(25);
 
@@ -415,15 +472,114 @@ internal static class Program
             "Static restoration must use named address and mask arguments.");
         Assert(command.Contains("gateway=192.168.50.1 gwmetric=25"),
             "Static restoration did not explicitly restore the gateway metric.");
+        Assert(command.EndsWith("store=persistent", StringComparison.Ordinal),
+            "Static restoration was not explicitly persisted.");
+        Assert(!command.Contains("source=dhcp", StringComparison.OrdinalIgnoreCase),
+            "A static-to-static restoration unexpectedly passed through DHCP.");
         Assert(NetworkConfigManager.GatewayMetricsMatch(new[] { 25 }, new[] { 25 }, false),
             "Matching gateway metrics were rejected.");
         Assert(!NetworkConfigManager.GatewayMetricsMatch(new[] { 5 }, new[] { 25 }, false),
             "Different gateway metrics were accepted.");
 
         var noGateway = new AdapterOriginalConfig { DhcpEnabled = false, DnsServersFromDhcp = false };
-        noGateway.StaticAddresses.Add((IPAddress.Parse("192.168.50.20"), IPAddress.Parse("255.255.255.0")));
-        Assert(NetworkConfigManager.BuildStaticAddressRestoreCommand(adapter, noGateway).EndsWith("gateway=none"),
+        noGateway.StaticAddresses.Add(new AdapterIpv4Address(
+            IPAddress.Parse("192.168.50.20"), IPAddress.Parse("255.255.255.0")));
+        Assert(NetworkConfigManager.BuildStaticAddressRestoreCommand(adapter, noGateway)
+                .EndsWith("gateway=none store=persistent", StringComparison.Ordinal),
             "Static restoration without a gateway must explicitly remove the gateway.");
+    }
+
+    private static void AutomaticApipaIsExcludedButManualLinkLocalIsPreserved()
+    {
+        var linkLocal = IPAddress.Parse("169.254.170.39");
+        Assert(!NetworkConfigManager.ShouldPreserveCapturedAddress(
+                linkLocal, PrefixOrigin.WellKnown, SuffixOrigin.LinkLayerAddress, true),
+            "Automatically generated APIPA was included in the recovery snapshot.");
+        Assert(NetworkConfigManager.ShouldPreserveCapturedAddress(
+                linkLocal, PrefixOrigin.Manual, SuffixOrigin.Manual, false),
+            "A manually configured 169.254 address was incorrectly excluded.");
+        Assert(NetworkConfigManager.ShouldPreserveCapturedAddress(
+                linkLocal, PrefixOrigin.Other, SuffixOrigin.Other, false),
+            "An unknown legacy link-local origin must be preserved conservatively.");
+    }
+
+    private static void StaticFallbackOnlyRunsForModeMismatch()
+    {
+        Assert(NetworkConfigManager.NeedsStaticFallback(new NetworkConfigVerification
+        {
+            ActiveModeMatches = false,
+            PersistentModeMatches = false,
+            AddressesMatch = true
+        }), "Static fallback was not selected when DHCP remained enabled.");
+
+        Assert(!NetworkConfigManager.NeedsStaticFallback(new NetworkConfigVerification
+        {
+            ActiveModeMatches = true,
+            PersistentModeMatches = true,
+            AddressesMatch = false
+        }), "WMI static fallback was selected even though both mode checks already matched.");
+    }
+
+    private static async Task LinkCancellationDoesNotEnterMutationStageAsync()
+    {
+        var configureCalled = false;
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        try
+        {
+            await MainViewModel.RunLinkThenConfigureAsync(
+                token => Task.FromCanceled(token),
+                token =>
+                {
+                    configureCalled = true;
+                    return Task.CompletedTask;
+                },
+                cts.Token);
+            throw new InvalidOperationException("Cancelled Link wait unexpectedly continued.");
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        Assert(!configureCalled,
+            "Adapter mutation or recovery snapshot stage ran before Link UP.");
+        Assert(!MainViewModel.ShouldRestoreAdapter(false),
+            "No-link cancellation incorrectly requested adapter restoration.");
+    }
+
+    private static async Task CancellationAfterMutationRequiresRecoveryAsync()
+    {
+        var mutationStarted = false;
+        try
+        {
+            await MainViewModel.RunLinkThenConfigureAsync(
+                token => Task.CompletedTask,
+                token =>
+                {
+                    mutationStarted = true;
+                    throw new OperationCanceledException(token);
+                },
+                CancellationToken.None);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        Assert(mutationStarted && MainViewModel.ShouldRestoreAdapter(mutationStarted),
+            "Cancellation after the first mutation was not routed to recovery.");
+    }
+
+    private static void WatchdogStartupDoesNotCreateInteractiveWindow()
+    {
+        var sessionId = Guid.NewGuid().ToString("N");
+        Assert(!App.ShouldCreateInteractiveWindow(new[]
+            {
+                NetworkRecoveryStore.WatchdogArgument,
+                "1234",
+                sessionId
+            }), "Watchdog arguments unexpectedly selected interactive UI startup.");
+        Assert(App.ShouldCreateInteractiveWindow(Array.Empty<string>()),
+            "Normal startup unexpectedly selected watchdog mode.");
     }
 
     private static void DhcpModeUsesRegistryValues()

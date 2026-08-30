@@ -24,6 +24,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private DispatcherTimer? _ellipsisTimer;
     private int _ellipsisDots;
     private bool _isCleanupRunning;
+    private bool _adapterMutationStarted;
 
     private AppPhase _appPhase = AppPhase.Preparation;
 
@@ -51,8 +52,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public ObservableCollection<StepItem> Steps { get; } = new()
     {
-        new StepItem("1. 配置本机网卡", "配置网卡", "设置静态 IP 并启动 DHCP 服务"),
-        new StepItem("2. 连接 IPMI 管理口", "连接网线", "等待检测到网线连接"),
+        new StepItem("1. 连接 IPMI 管理口", "连接网线", "检测到 Link UP 前不会修改网卡"),
+        new StepItem("2. 配置本机网卡", "配置网卡", "设置静态 IP 并启动 DHCP 服务"),
         new StepItem("3. 自动获取 IPMI 地址", "获取 IP", "等待 IPMI 通过 DHCP 获取地址"),
         new StepItem("4. 打开 BMC 页面", "打开页面", "调用浏览器打开管理页面"),
         new StepItem("5. 完成后退出", "清理退出", "关闭 DHCP 服务并恢复原始网卡配置")
@@ -366,7 +367,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
-        var adapter = adapters.FirstOrDefault(snapshot.MatchesAdapter) ?? snapshot.ToAdapter();
         StatusText = "正在恢复上次未完成的网卡配置...";
         DetailText = "检测到程序上次未正常结束，正在恢复网卡「" + snapshot.AdapterName + "」。";
         LogInfo("Pending recovery found: session=" + snapshot.SessionId + " adapter=" + snapshot.AdapterName);
@@ -374,12 +374,26 @@ public sealed class MainViewModel : INotifyPropertyChanged
         try
         {
             using var recoveryCts = new CancellationTokenSource(TimeSpan.FromSeconds(70));
-            await NetworkConfigManager.RestoreOriginalConfigAsync(
-                adapter,
-                snapshot.ToOriginalConfig(),
-                snapshot.ToSubnetConfig(),
-                recoveryCts.Token);
-            NetworkRecoveryStore.DeleteIfSessionMatches(snapshot.SessionId);
+            await NetworkRecoveryStore.ExecuteWithRecoveryLockAsync(async () =>
+            {
+                if (!NetworkRecoveryStore.TryLoad(out var currentSnapshot, out var currentError))
+                {
+                    if (!string.IsNullOrWhiteSpace(currentError))
+                        throw new InvalidDataException(currentError);
+                    return;
+                }
+
+                if (!currentSnapshot.SessionId.Equals(snapshot.SessionId, StringComparison.OrdinalIgnoreCase))
+                    return;
+
+                var adapter = NetworkConfigManager.ResolveCurrentAdapter(currentSnapshot.ToAdapter());
+                await NetworkConfigManager.RestoreOriginalConfigAsync(
+                    adapter,
+                    currentSnapshot.ToOriginalConfig(adapter),
+                    currentSnapshot.ToSubnetConfig(),
+                    recoveryCts.Token);
+                NetworkRecoveryStore.DeleteIfSessionMatches(currentSnapshot.SessionId);
+            }, recoveryCts.Token);
             StatusText = "✅ 上次网卡配置已恢复";
             DetailText = "异常退出留下的网络配置已经处理，可以继续使用。";
             LogInfo("Pending recovery completed: session=" + snapshot.SessionId);
@@ -457,6 +471,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         _selectedAdapter = SelectedAdapterItem;
         _originalConfig = originalConfig;
+        _adapterMutationStarted = false;
+        _recoverySnapshot = null;
         AdapterSelectionEnabled = false;
         StartButtonEnabled = false;
         AppPhase = AppPhase.FlowRunning;
@@ -473,8 +489,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         try
         {
-            await ConfigureLocalAdapterAsync(_flowCts.Token);
-            await WaitForLinkAsync(_flowCts.Token);
+            await RunLinkThenConfigureAsync(
+                WaitForLinkAsync,
+                ConfigureLocalAdapterAsync,
+                _flowCts.Token);
             var lease = await WaitForDhcpLeaseAsync(_flowCts.Token);
             DiscoveredIp = lease.IpAddress.ToString();
             LogInfo("Flow: BMC IP discovered " + _discoveredIp);
@@ -491,11 +509,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             LogInfo("Flow failed: " + ex.Message);
             var failureDetail = BuildFailureDetail(CurrentStepIndex, ex.Message);
+            if (_adapterMutationStarted)
+            {
+                failureDetail += " 网卡已经开始修改，请先点击「完成 / 退出」执行恢复；恢复成功前不能重新开始。";
+            }
             MarkCurrentFailure(failureDetail);
             StatusText = "❌ 操作失败";
             DetailText = failureDetail;
-            AdapterSelectionEnabled = true;
-            StartButtonEnabled = true;
+            AdapterSelectionEnabled = !_adapterMutationStarted;
+            StartButtonEnabled = !_adapterMutationStarted;
             BadgeState = StepState.Failed;
             BadgeText = "! 失败";
             StopEllipsis();
@@ -507,7 +529,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (_selectedAdapter is null || _originalConfig is null)
             throw new InvalidOperationException("未确认网卡原始配置，已停止修改网络设置。");
 
-        SetStep(0, StepState.Active, "正在配置本机网卡：" + _selectedAdapter.Name);
+        _selectedAdapter = NetworkConfigManager.ResolveCurrentAdapter(_selectedAdapter);
+        _originalConfig = NetworkConfigManager.CaptureOriginalConfig(_selectedAdapter);
+
+        SetStep(1, StepState.Active, "正在配置本机网卡：" + _selectedAdapter.Name);
         SetBusy("正在配置本机网卡...", "已确认原始配置，正在将网卡切换到 " + _subnetConfig.ServerDisplay + "。");
         StartEllipsis();
 
@@ -520,23 +545,26 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         _recoverySnapshot = NetworkRecoveryStore.Save(_selectedAdapter, _originalConfig, _subnetConfig);
         LogInfo("Recovery snapshot saved: session=" + _recoverySnapshot.SessionId);
-        NetworkRecoveryStore.StartWatchdog(_recoverySnapshot, LogInfo);
-
-        if (!_originalConfig.DhcpEnabled)
+        try
         {
-            LogInfo("Original was static, forcing DHCP first");
-            SetStep(0, StepState.Active, "检测到当前是静态 IP，先恢复为 DHCP 以清理残留配置。");
-            await NetworkConfigManager.ForceDhcpBestEffortAsync(_selectedAdapter, _subnetConfig, ct, releaseToolLease: false);
-            await Task.Delay(1200, ct);
+            NetworkRecoveryStore.StartWatchdog(_recoverySnapshot, LogInfo);
+        }
+        catch
+        {
+            NetworkRecoveryStore.DeleteIfSessionMatches(_recoverySnapshot.SessionId);
+            _recoverySnapshot = null;
+            throw;
         }
 
+        _adapterMutationStarted = true;
+        LogInfo("Adapter mutation started after Link UP");
         await NetworkConfigManager.SetStaticForToolAsync(_selectedAdapter, _subnetConfig, ct);
         LogInfo("Static IP set: " + _subnetConfig.ServerDisplay);
         _dhcpServer = new DhcpServer(_subnetConfig, _selectedAdapter);
         _dhcpServer.Logger = msg => LogInfo("[DHCP] " + msg);
         _dhcpServer.ErrorEncountered += OnDhcpServerError;
         _dhcpServer.Start();
-        await CompleteStepAsync(0, "✅ 本机网卡配置完成：" + _subnetConfig.ServerDisplay, ct);
+        await CompleteStepAsync(1, "✅ 本机网卡配置完成：" + _subnetConfig.ServerDisplay, ct);
         StopEllipsis();
     }
 
@@ -549,7 +577,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private async Task WaitForLinkAsync(CancellationToken ct)
     {
         LogInfo("Link wait started");
-        SetStep(1, StepState.Active, "请用网线连接服务器的 IPMI 管理口，正在等待 Link UP。");
+        SetStep(0, StepState.Active, "请用网线连接服务器的 IPMI 管理口，正在等待 Link UP。");
         SetBusy("请插入网线", "等待检测到网线连接，预计几秒内完成。");
         StartEllipsis();
 
@@ -561,7 +589,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             if (await NetworkConfigManager.IsLinkUpAsync(_selectedAdapter!, ct))
             {
                 LogInfo("Link detected");
-                await CompleteStepAsync(1, "✅ 网线已连接，链路已 UP", ct);
+                await CompleteStepAsync(0, "✅ 网线已连接，链路已 UP；现在开始配置本机网卡", ct);
                 StopEllipsis();
                 return;
             }
@@ -648,6 +676,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
             LogInfo("BMC endpoint retry failed: " + ex.Message);
             EndpointStatusText = "重新检测管理页面时遇到问题：" + ex.Message;
         }
+    }
+
+    internal static async Task RunLinkThenConfigureAsync(
+        Func<CancellationToken, Task> waitForLink,
+        Func<CancellationToken, Task> configureAdapter,
+        CancellationToken cancellationToken)
+    {
+        await waitForLink(cancellationToken);
+        await configureAdapter(cancellationToken);
+    }
+
+    internal static bool ShouldRestoreAdapter(bool adapterMutationStarted)
+    {
+        return adapterMutationStarted;
     }
 
     private async Task<bool> ProbeBmcEndpointAsync(
@@ -741,6 +783,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         _isCleanupRunning = true;
         ExitButtonEnabled = false;
+        var adapterWasModified = _adapterMutationStarted;
         LogInfo("Cleanup started");
 
         try
@@ -768,25 +811,48 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _dhcpServer = null;
             LogInfo("Cleanup: DHCP server disposed");
 
-            if (_selectedAdapter is not null && _originalConfig is not null)
+            if (ShouldRestoreAdapter(_adapterMutationStarted)
+                && _selectedAdapter is not null
+                && _originalConfig is not null)
             {
-                LogInfo("Cleanup: restoring original configuration for " + _selectedAdapter.Name);
+                var selectedAdapter = _selectedAdapter;
+                var originalConfig = _originalConfig;
+                var recoverySnapshot = _recoverySnapshot;
                 using var cleanupCts = new CancellationTokenSource(TimeSpan.FromSeconds(70));
-                await NetworkConfigManager.RestoreOriginalConfigAsync(
-                    _selectedAdapter, _originalConfig, _subnetConfig, cleanupCts.Token);
+                await NetworkRecoveryStore.ExecuteWithRecoveryLockAsync(async () =>
+                {
+                    var recoveryAdapter = NetworkConfigManager.ResolveCurrentAdapter(selectedAdapter);
+                    LogInfo("Cleanup: restoring original configuration for " + recoveryAdapter.Name);
+                    await NetworkConfigManager.RestoreOriginalConfigAsync(
+                        recoveryAdapter, originalConfig, _subnetConfig, cleanupCts.Token);
+
+                    if (recoverySnapshot is not null)
+                    {
+                        NetworkRecoveryStore.DeleteIfSessionMatches(recoverySnapshot.SessionId);
+                    }
+                }, cleanupCts.Token);
                 LogInfo("Cleanup: original configuration restore done");
 
                 if (_recoverySnapshot is not null)
                 {
-                    NetworkRecoveryStore.DeleteIfSessionMatches(_recoverySnapshot.SessionId);
                     LogInfo("Cleanup: recovery snapshot removed");
                     _recoverySnapshot = null;
                 }
+
+                _adapterMutationStarted = false;
+            }
+            else
+            {
+                LogInfo("Cleanup: adapter was not modified; restore skipped");
             }
 
-            SetStep(4, StepState.Done, "✅ 原始网卡配置已恢复，DHCP Server 已关闭");
+            SetStep(4, StepState.Done, adapterWasModified
+                ? "✅ 原始网卡配置已恢复，DHCP Server 已关闭"
+                : "✅ 未修改网卡，已安全退出");
             StatusText = "✅ 清理完成";
-            DetailText = "使用工具前的网卡配置已经恢复，可以安全退出。";
+            DetailText = adapterWasModified
+                ? "使用工具前的网卡配置已经恢复，可以安全退出。"
+                : "尚未修改本机网卡，可以安全退出。";
             ActivityText = GetActivityText(4, StepState.Done);
             BadgeState = StepState.Done;
             BadgeText = "✓ 已完成";
@@ -905,8 +971,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             return index switch
             {
-                0 => "本机网卡和 DHCP 服务已准备好。",
-                1 => "已检测到网线连接，链路已 UP。",
+                0 => "已检测到网线连接，链路已 UP。",
+                1 => "本机网卡和 DHCP 服务已准备好。",
                 2 => "已获取 IPMI 设备地址。",
                 3 => "BMC 管理页面已打开。",
                 _ => "原始网卡配置已恢复，可以安全退出。"
@@ -929,8 +995,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         return index switch
         {
-            0 => "正在将网卡设置为静态 IP " + _subnetConfig.ServerDisplay + "，请稍候...",
-            1 => "正在等待你插入连接 IPMI 管理口的网线...",
+            0 => "正在等待你插入连接 IPMI 管理口的网线；此时不会修改网卡...",
+            1 => "正在将网卡设置为静态 IP " + _subnetConfig.ServerDisplay + "，请稍候...",
             2 => "正在等待 IPMI 设备通过 DHCP 获取地址...",
             3 => "正在打开默认浏览器访问 BMC 管理页面...",
             _ => "正在关闭 DHCP 服务并恢复原始网卡配置..."
@@ -984,8 +1050,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         return stepIndex switch
         {
-            0 => "配置本机网卡失败。请确认已用管理员权限运行，并检查安全软件是否拦截网络配置。原始错误：" + message,
-            1 => "未检测到网线连接。请确认网线直连服务器 IPMI/BMC 管理口，不是普通业务网口或交换机口。原始错误：" + message,
+            0 => "未检测到网线连接。请确认网线直连服务器 IPMI/BMC 管理口，不是普通业务网口或交换机口。原始错误：" + message,
+            1 => "配置本机网卡失败。请确认已用管理员权限运行，并检查安全软件是否拦截网络配置。原始错误：" + message,
             2 => "未收到 BMC 的 DHCP 请求。请确认线接在 IPMI/BMC 管理口，并确认 BMC 设置为 DHCP 获取地址。原始错误：" + message,
             3 => "已分配 BMC 地址，但确认或打开管理页面时遇到问题。可以重新检测或手动访问。原始错误：" + message,
             4 => "恢复原始网卡配置时失败。请再次点击「恢复网卡并退出」，或手动检查网卡 IPv4 设置。原始错误：" + message,

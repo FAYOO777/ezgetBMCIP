@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Runtime.CompilerServices;
 
 namespace EzGetBmcIp;
@@ -94,22 +95,55 @@ public sealed record WiredAdapter(
 public sealed class AdapterOriginalConfig
 {
     public bool DhcpEnabled { get; init; }
+    public bool ActiveDhcpEnabled { get; init; }
+    public bool PersistentDhcpEnabled { get; init; }
     public bool DnsServersFromDhcp { get; init; }
-    public List<(IPAddress Address, IPAddress Mask)> StaticAddresses { get; } = new();
+    public List<AdapterIpv4Address> StaticAddresses { get; } = new();
     public List<IPAddress> Gateways { get; } = new();
     public List<int> GatewayMetrics { get; } = new();
     public List<IPAddress> DnsServers { get; } = new();
 
     public static AdapterOriginalConfig CreateDhcp()
     {
-        return new AdapterOriginalConfig { DhcpEnabled = true, DnsServersFromDhcp = true };
+        return new AdapterOriginalConfig
+        {
+            DhcpEnabled = true,
+            ActiveDhcpEnabled = true,
+            PersistentDhcpEnabled = true,
+            DnsServersFromDhcp = true
+        };
     }
+}
+
+public sealed class AdapterIpv4Address
+{
+    public AdapterIpv4Address(
+        IPAddress address,
+        IPAddress mask,
+        PrefixOrigin prefixOrigin = PrefixOrigin.Other,
+        SuffixOrigin suffixOrigin = SuffixOrigin.Other,
+        DuplicateAddressDetectionState addressState = DuplicateAddressDetectionState.Invalid)
+    {
+        Address = address;
+        Mask = mask;
+        PrefixOrigin = prefixOrigin;
+        SuffixOrigin = suffixOrigin;
+        AddressState = addressState;
+    }
+
+    public IPAddress Address { get; }
+    public IPAddress Mask { get; }
+    public PrefixOrigin PrefixOrigin { get; }
+    public SuffixOrigin SuffixOrigin { get; }
+    public DuplicateAddressDetectionState AddressState { get; }
 }
 
 public sealed class NetworkConfigVerification
 {
     public bool IsSuccess { get; init; }
     public bool ModeMatches { get; init; }
+    public bool ActiveModeMatches { get; init; }
+    public bool PersistentModeMatches { get; init; }
     public bool AddressesMatch { get; init; }
     public bool GatewaysMatch { get; init; }
     public bool DnsMatches { get; init; }

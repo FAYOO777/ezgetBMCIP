@@ -6,7 +6,7 @@
     <LangVersion>8</LangVersion>
     <RootNamespace>EzGetBmcIp.Legacy</RootNamespace>
     <AssemblyName>ezgetBMCIP-legacy</AssemblyName>
-    <Version>1.5.0</Version>
+    <Version>1.5.1</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\ezgetBMCIP.ico</ApplicationIcon>
   </PropertyGroup>

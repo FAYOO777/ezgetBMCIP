@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Runtime.CompilerServices;
@@ -20,6 +21,7 @@ namespace EzGetBmcIp.Legacy
         private AdapterOriginalConfig _originalConfig;
         private NetworkRecoverySnapshot _recoverySnapshot;
         private bool _isCleaningUp;
+        private bool _adapterMutationStarted;
         private string _dhcpServerError;
 
         private Task _flowTask = Task.CompletedTask;
@@ -207,7 +209,6 @@ namespace EzGetBmcIp.Legacy
                 return;
             }
 
-            var adapter = adapters.FirstOrDefault(snapshot.MatchesAdapter) ?? snapshot.ToAdapter();
             StatusText = "正在恢复上次未完成的网卡配置...";
             DetailText = "检测到程序上次未正常结束，正在恢复网卡「" + snapshot.AdapterName + "」。";
             Log("Pending recovery found: session=" + snapshot.SessionId + " adapter=" + snapshot.AdapterName);
@@ -215,10 +216,29 @@ namespace EzGetBmcIp.Legacy
             {
                 using (var recoveryCts = new CancellationTokenSource(TimeSpan.FromSeconds(70)))
                 {
-                    await NetworkConfigManager.RestoreOriginalConfigAsync(
-                        adapter, snapshot.ToOriginalConfig(), snapshot.ToSubnetConfig(), recoveryCts.Token);
+                    await NetworkRecoveryStore.ExecuteWithRecoveryLockAsync(async () =>
+                    {
+                        NetworkRecoverySnapshot currentSnapshot;
+                        string currentError;
+                        if (!NetworkRecoveryStore.TryLoad(out currentSnapshot, out currentError))
+                        {
+                            if (!string.IsNullOrWhiteSpace(currentError))
+                                throw new InvalidDataException(currentError);
+                            return;
+                        }
+
+                        if (!currentSnapshot.SessionId.Equals(snapshot.SessionId, StringComparison.OrdinalIgnoreCase))
+                            return;
+
+                        var adapter = NetworkConfigManager.ResolveCurrentAdapter(currentSnapshot.ToAdapter());
+                        await NetworkConfigManager.RestoreOriginalConfigAsync(
+                            adapter,
+                            currentSnapshot.ToOriginalConfig(adapter),
+                            currentSnapshot.ToSubnetConfig(),
+                            recoveryCts.Token);
+                        NetworkRecoveryStore.DeleteIfSessionMatches(currentSnapshot.SessionId);
+                    }, recoveryCts.Token);
                 }
-                NetworkRecoveryStore.DeleteIfSessionMatches(snapshot.SessionId);
                 StatusText = "上次网卡配置已恢复";
                 DetailText = "异常退出留下的网络配置已经处理，可以继续使用。";
                 Log("Pending recovery completed: session=" + snapshot.SessionId);
@@ -272,6 +292,8 @@ namespace EzGetBmcIp.Legacy
 
             _selectedAdapter = SelectedAdapterItem;
             _originalConfig = originalConfig;
+            _adapterMutationStarted = false;
+            _recoverySnapshot = null;
             _adapterSelectionEnabled = false;
             _startButtonEnabled = false;
             _isFlowStarted = true;
@@ -292,8 +314,7 @@ namespace EzGetBmcIp.Legacy
             Log("Flow started, adapter: " + (_selectedAdapter?.Name ?? "null") + ", subnet: " + _subnetConfig.ServerDisplay);
             try
             {
-                await ConfigureAdapterAsync(ct);
-                await WaitForLinkAsync(ct);
+                await RunLinkThenConfigureAsync(WaitForLinkAsync, ConfigureAdapterAsync, ct);
                 var lease = await WaitForLeaseAsync(ct);
                 DiscoveredIp = lease.IpAddress.ToString();
                 Log("Flow success, BMC IP: " + _discoveredIp);
@@ -314,11 +335,13 @@ namespace EzGetBmcIp.Legacy
                 if (_isCleaningUp) return;
                 Log("Flow failed: " + ex.Message);
                 StatusText = "\u64cd\u4f5c\u5931\u8d25";
-                DetailText = ex.Message;
+                DetailText = ex.Message + (_adapterMutationStarted
+                    ? " \u7f51\u5361\u5df2\u7ecf\u5f00\u59cb\u4fee\u6539\uff0c\u8bf7\u5148\u53d6\u6d88\u6216\u9000\u51fa\u6267\u884c\u6062\u590d\uff1b\u6062\u590d\u6210\u529f\u524d\u4e0d\u80fd\u91cd\u65b0\u5f00\u59cb\u3002"
+                    : "");
                 BadgeText = "\u5931\u8d25";
                 BadgeColor = "#D13438";
-                _adapterSelectionEnabled = true;
-                _startButtonEnabled = true;
+                _adapterSelectionEnabled = !_adapterMutationStarted;
+                _startButtonEnabled = !_adapterMutationStarted;
                 OnPropertyChanged(nameof(AdapterSelectionEnabled));
                 OnPropertyChanged(nameof(StartButtonEnabled));
             }
@@ -328,6 +351,9 @@ namespace EzGetBmcIp.Legacy
         {
             if (_selectedAdapter == null || _originalConfig == null)
                 throw new InvalidOperationException("未确认网卡原始配置，已停止修改网络设置。");
+
+            _selectedAdapter = NetworkConfigManager.ResolveCurrentAdapter(_selectedAdapter);
+            _originalConfig = NetworkConfigManager.CaptureOriginalConfig(_selectedAdapter);
 
             StatusText = "\u6b63\u5728\u914d\u7f6e\u7f51\u5361...";
             ActivityText = "已确认原始配置，正在将网卡切换到 " + _subnetConfig.ServerDisplay;
@@ -340,13 +366,19 @@ namespace EzGetBmcIp.Legacy
                 ", addr=" + _subnetConfig.ServerDisplay);
             _recoverySnapshot = NetworkRecoveryStore.Save(_selectedAdapter, _originalConfig, _subnetConfig);
             Log("Recovery snapshot saved: session=" + _recoverySnapshot.SessionId);
-            NetworkRecoveryStore.StartWatchdog(_recoverySnapshot, Log);
-            if (!_originalConfig.DhcpEnabled)
+            try
             {
-                await NetworkConfigManager.ForceDhcpBestEffortAsync(_selectedAdapter, _subnetConfig, ct, releaseToolLease: false);
-                await Task.Delay(1200, ct);
+                NetworkRecoveryStore.StartWatchdog(_recoverySnapshot, Log);
+            }
+            catch
+            {
+                NetworkRecoveryStore.DeleteIfSessionMatches(_recoverySnapshot.SessionId);
+                _recoverySnapshot = null;
+                throw;
             }
 
+            _adapterMutationStarted = true;
+            Log("Adapter mutation started after Link UP");
             await NetworkConfigManager.SetStaticForToolAsync(_selectedAdapter, _subnetConfig, ct);
             _dhcpServer = new DhcpServer(_subnetConfig, _selectedAdapter);
             _dhcpServer.Logger = msg => Log("[DHCP] " + msg);
@@ -382,6 +414,20 @@ namespace EzGetBmcIp.Legacy
                 }
                 await Task.Delay(1500, ct);
             }
+        }
+
+        internal static async Task RunLinkThenConfigureAsync(
+            Func<CancellationToken, Task> waitForLink,
+            Func<CancellationToken, Task> configureAdapter,
+            CancellationToken cancellationToken)
+        {
+            await waitForLink(cancellationToken);
+            await configureAdapter(cancellationToken);
+        }
+
+        internal static bool ShouldRestoreAdapter(bool adapterMutationStarted)
+        {
+            return adapterMutationStarted;
         }
 
         private async Task<DhcpLease> WaitForLeaseAsync(CancellationToken ct)
@@ -535,10 +581,13 @@ namespace EzGetBmcIp.Legacy
             if (_isClosing || _isCleaningUp) return false;
             _isClosing = true;
             _isCleaningUp = true;
+            var adapterWasModified = _adapterMutationStarted;
             Log("Cleanup started");
             try
             {
-                StatusText = "\u6b63\u5728\u9000\u51fa\u5e76\u6062\u590d\u7f51\u5361...";
+                StatusText = adapterWasModified
+                    ? "\u6b63\u5728\u9000\u51fa\u5e76\u6062\u590d\u7f51\u5361..."
+                    : "\u6b63\u5728\u5b89\u5168\u9000\u51fa...";
                 ActivityText = "\u8bf7\u7a0d\u5019...";
                 BadgeText = "\u5904\u7406\u4e2d";
                 BadgeColor = "#0078D4";
@@ -546,7 +595,9 @@ namespace EzGetBmcIp.Legacy
                 await DoCleanupAsync();
 
                 Log("Cleanup success");
-                StatusText = "\u7f51\u5361\u5df2\u6062\u590d";
+                StatusText = adapterWasModified
+                    ? "\u7f51\u5361\u5df2\u6062\u590d"
+                    : "\u672a\u4fee\u6539\u7f51\u5361\uff0c\u5df2\u5b89\u5168\u9000\u51fa";
                 BadgeText = "\u5df2\u5b8c\u6210";
                 BadgeColor = "#107C10";
                 _isCleanupDone = true;
@@ -577,40 +628,58 @@ namespace EzGetBmcIp.Legacy
             _dhcpServer?.Dispose();
             _dhcpServer = null;
 
-            if (_selectedAdapter != null)
+            if (ShouldRestoreAdapter(_adapterMutationStarted) && _selectedAdapter != null)
             {
+                var selectedAdapter = _selectedAdapter;
+                var originalConfig = _originalConfig;
+                var recoverySnapshot = _recoverySnapshot;
                 using (var c = new CancellationTokenSource(TimeSpan.FromSeconds(70)))
                 {
-                    if (_originalConfig != null)
+                    if (originalConfig != null)
                     {
-                        await NetworkConfigManager.RestoreOriginalConfigAsync(
-                            _selectedAdapter, _originalConfig, _subnetConfig, c.Token);
+                        await NetworkRecoveryStore.ExecuteWithRecoveryLockAsync(async () =>
+                        {
+                            var recoveryAdapter = NetworkConfigManager.ResolveCurrentAdapter(selectedAdapter);
+                            await NetworkConfigManager.RestoreOriginalConfigAsync(
+                                recoveryAdapter, originalConfig, _subnetConfig, c.Token);
+
+                            if (recoverySnapshot != null)
+                                NetworkRecoveryStore.DeleteIfSessionMatches(recoverySnapshot.SessionId);
+                        }, c.Token);
                     }
                 }
 
                 if (_recoverySnapshot != null)
                 {
-                    NetworkRecoveryStore.DeleteIfSessionMatches(_recoverySnapshot.SessionId);
                     Log("Cleanup: recovery snapshot removed");
                     _recoverySnapshot = null;
                 }
+
+                _adapterMutationStarted = false;
+            }
+            else
+            {
+                Log("Cleanup: adapter was not modified; restore skipped");
             }
         }
 
         public void CancelFlow()
         {
             if (_isClosing || _isCleaningUp) return;
+            var adapterWasModified = _adapterMutationStarted;
             _isCleaningUp = true;
             _flowCts?.Cancel();
             Log("Cancel requested");
-            StatusText = "\u6b63\u5728\u53d6\u6d88\u5e76\u6062\u590d\u7f51\u5361...";
+            StatusText = adapterWasModified
+                ? "\u6b63\u5728\u53d6\u6d88\u5e76\u6062\u590d\u7f51\u5361..."
+                : "\u6b63\u5728\u53d6\u6d88\uff0c\u7f51\u5361\u5c1a\u672a\u4fee\u6539...";
             ActivityText = "\u8bf7\u7a0d\u5019...";
             BadgeText = "\u5904\u7406\u4e2d";
             BadgeColor = "#0078D4";
-            var _ = CancelCleanupAsync();
+            var _ = CancelCleanupAsync(adapterWasModified);
         }
 
-        private async Task CancelCleanupAsync()
+        private async Task CancelCleanupAsync(bool adapterWasModified)
         {
             try
             {
@@ -622,7 +691,9 @@ namespace EzGetBmcIp.Legacy
                 _startButtonEnabled = true;
                 OnPropertyChanged(nameof(AdapterSelectionEnabled));
                 OnPropertyChanged(nameof(StartButtonEnabled));
-                StatusText = "\u5df2\u53d6\u6d88\uff0c\u7f51\u5361\u5df2\u6062\u590d";
+                StatusText = adapterWasModified
+                    ? "\u5df2\u53d6\u6d88\uff0c\u7f51\u5361\u5df2\u6062\u590d"
+                    : "\u5df2\u53d6\u6d88\uff0c\u7f51\u5361\u672a\u88ab\u4fee\u6539";
                 DetailText = "\u53ef\u91cd\u65b0\u9009\u62e9\u7f51\u5361\u5f00\u59cb\u3002";
                 BadgeText = "";
                 ActivityText = "";

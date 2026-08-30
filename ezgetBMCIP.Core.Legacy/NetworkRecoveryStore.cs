@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,7 +16,7 @@ namespace EzGetBmcIp
     [XmlRoot("NetworkRecovery")]
     public sealed class NetworkRecoverySnapshot
     {
-        public int SchemaVersion { get; set; } = 1;
+        public int SchemaVersion { get; set; } = 2;
         public string SessionId { get; set; } = string.Empty;
         public DateTime CreatedAtUtc { get; set; }
         public string AdapterName { get; set; } = string.Empty;
@@ -49,17 +50,51 @@ namespace EzGetBmcIp
             var config = new AdapterOriginalConfig
             {
                 DhcpEnabled = DhcpEnabled,
+                ActiveDhcpEnabled = DhcpEnabled,
+                PersistentDhcpEnabled = DhcpEnabled,
                 DnsServersFromDhcp = DnsServersFromDhcp
             };
 
             foreach (var item in StaticAddresses)
-                config.StaticAddresses.Add((IPAddress.Parse(item.Address), IPAddress.Parse(item.Mask)));
+                config.StaticAddresses.Add(new AdapterIpv4Address(
+                    IPAddress.Parse(item.Address),
+                    IPAddress.Parse(item.Mask),
+                    ParseEnum(item.PrefixOrigin, PrefixOrigin.Other),
+                    ParseEnum(item.SuffixOrigin, SuffixOrigin.Other),
+                    ParseEnum(item.AddressState, DuplicateAddressDetectionState.Invalid)));
             foreach (var gateway in Gateways)
                 config.Gateways.Add(IPAddress.Parse(gateway));
             config.GatewayMetrics.AddRange(GatewayMetrics);
             foreach (var dns in DnsServers)
                 config.DnsServers.Add(IPAddress.Parse(dns));
             return config;
+        }
+
+        public AdapterOriginalConfig ToOriginalConfig(WiredAdapter currentAdapter)
+        {
+            var config = ToOriginalConfig();
+            if (SchemaVersion == 1)
+            {
+                config.StaticAddresses.RemoveAll(item =>
+                {
+                    var remove = NetworkConfigManager.IsCurrentlyConfirmedAutomaticApipa(
+                        currentAdapter, item.Address);
+                    if (remove && NetworkConfigManager.Logger != null)
+                    {
+                        NetworkConfigManager.Logger(
+                            "Legacy snapshot automatic APIPA excluded after live origin confirmation: " +
+                            item.Address);
+                    }
+                    return remove;
+                });
+            }
+            return config;
+        }
+
+        private static T ParseEnum<T>(string value, T fallback) where T : struct
+        {
+            T parsed;
+            return Enum.TryParse<T>(value, true, out parsed) ? parsed : fallback;
         }
 
         public SubnetConfig ToSubnetConfig()
@@ -78,7 +113,10 @@ namespace EzGetBmcIp
 
         public bool MatchesAdapter(WiredAdapter adapter)
         {
-            var idMatches = NormalizeId(AdapterId).Equals(NormalizeId(adapter.Id), StringComparison.OrdinalIgnoreCase);
+            var snapshotId = NormalizeId(AdapterId);
+            var currentId = NormalizeId(adapter.Id);
+            var idMatches = snapshotId.Length > 0
+                && snapshotId.Equals(currentId, StringComparison.OrdinalIgnoreCase);
             var snapshotMac = NormalizeMac(AdapterMacAddress);
             var currentMac = NormalizeMac(adapter.MacAddress);
             var macMatches = snapshotMac.Length > 0 && snapshotMac.Equals(currentMac, StringComparison.OrdinalIgnoreCase);
@@ -103,11 +141,21 @@ namespace EzGetBmcIp
 
         [XmlAttribute]
         public string Mask { get; set; } = string.Empty;
+
+        [XmlAttribute]
+        public string PrefixOrigin { get; set; } = string.Empty;
+
+        [XmlAttribute]
+        public string SuffixOrigin { get; set; } = string.Empty;
+
+        [XmlAttribute]
+        public string AddressState { get; set; } = string.Empty;
     }
 
     public static class NetworkRecoveryStore
     {
         public const string WatchdogArgument = "--recovery-watchdog";
+        private const string RecoveryMutexName = @"Global\ezgetBMCIP-NetworkRecovery";
 
         public static string RecoveryFilePath
         {
@@ -136,7 +184,10 @@ namespace EzGetBmcIp
                 StaticAddresses = originalConfig.StaticAddresses.Select(item => new RecoveryAddress
                 {
                     Address = item.Address.ToString(),
-                    Mask = item.Mask.ToString()
+                    Mask = item.Mask.ToString(),
+                    PrefixOrigin = item.PrefixOrigin.ToString(),
+                    SuffixOrigin = item.SuffixOrigin.ToString(),
+                    AddressState = item.AddressState.ToString()
                 }).ToList(),
                 Gateways = originalConfig.Gateways.Select(ip => ip.ToString()).ToList(),
                 GatewayMetrics = originalConfig.GatewayMetrics.ToList(),
@@ -218,6 +269,41 @@ namespace EzGetBmcIp
                 && (sessionId = args[2]).Length > 0;
         }
 
+        public static Task ExecuteWithRecoveryLockAsync(Func<Task> action, CancellationToken cancellationToken)
+        {
+            return Task.Run(() =>
+            {
+                using (var mutex = new Mutex(false, RecoveryMutexName))
+                {
+                    var ownsMutex = false;
+                    try
+                    {
+                        int signaled;
+                        try
+                        {
+                            signaled = WaitHandle.WaitAny(new WaitHandle[] { mutex, cancellationToken.WaitHandle });
+                        }
+                        catch (AbandonedMutexException ex)
+                        {
+                            signaled = ex.MutexIndex;
+                            ownsMutex = signaled == 0;
+                        }
+
+                        if (signaled != 0)
+                            throw new OperationCanceledException(cancellationToken);
+
+                        ownsMutex = true;
+                        action().GetAwaiter().GetResult();
+                    }
+                    finally
+                    {
+                        if (ownsMutex)
+                            mutex.ReleaseMutex();
+                    }
+                }
+            }, cancellationToken);
+        }
+
         public static async Task<int> RunWatchdogAsync(int ownerProcessId, string sessionId, Action<string> logger)
         {
             try
@@ -229,28 +315,32 @@ namespace EzGetBmcIp
                 }
                 catch (ArgumentException) { }
 
-                NetworkRecoverySnapshot snapshot;
-                string error;
-                if (!TryLoad(out snapshot, out error))
-                {
-                    if (!string.IsNullOrWhiteSpace(error))
-                        logger("Recovery watchdog could not read snapshot: " + error);
-                    return 0;
-                }
-                if (!snapshot.SessionId.Equals(sessionId, StringComparison.OrdinalIgnoreCase))
-                {
-                    logger("Recovery watchdog ignored a newer recovery session.");
-                    return 0;
-                }
-
-                logger("Owner process exited with an active recovery snapshot; restoring adapter.");
                 using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(70)))
                 {
-                    await NetworkConfigManager.RestoreOriginalConfigAsync(
-                        snapshot.ToAdapter(), snapshot.ToOriginalConfig(), snapshot.ToSubnetConfig(), cts.Token);
+                    await ExecuteWithRecoveryLockAsync(async () =>
+                    {
+                        NetworkRecoverySnapshot snapshot;
+                        string error;
+                        if (!TryLoad(out snapshot, out error))
+                        {
+                            if (!string.IsNullOrWhiteSpace(error))
+                                logger("Recovery watchdog could not read snapshot: " + error);
+                            return;
+                        }
+                        if (!snapshot.SessionId.Equals(sessionId, StringComparison.OrdinalIgnoreCase))
+                        {
+                            logger("Recovery watchdog ignored a newer recovery session.");
+                            return;
+                        }
+
+                        logger("Owner process exited with an active recovery snapshot; restoring adapter.");
+                        var adapter = NetworkConfigManager.ResolveCurrentAdapter(snapshot.ToAdapter());
+                        await NetworkConfigManager.RestoreOriginalConfigAsync(
+                            adapter, snapshot.ToOriginalConfig(adapter), snapshot.ToSubnetConfig(), cts.Token);
+                        DeleteIfSessionMatches(sessionId);
+                        logger("Recovery watchdog restored the original adapter configuration.");
+                    }, cts.Token);
                 }
-                DeleteIfSessionMatches(sessionId);
-                logger("Recovery watchdog restored the original adapter configuration.");
                 return 0;
             }
             catch (Exception ex)
@@ -296,10 +386,11 @@ namespace EzGetBmcIp
         private static void Validate(NetworkRecoverySnapshot snapshot)
         {
             Guid parsed;
-            if (snapshot == null || snapshot.SchemaVersion != 1
+            if (snapshot == null || (snapshot.SchemaVersion != 1 && snapshot.SchemaVersion != 2)
                 || !Guid.TryParseExact(snapshot.SessionId, "N", out parsed)
                 || string.IsNullOrWhiteSpace(snapshot.AdapterName)
-                || string.IsNullOrWhiteSpace(snapshot.AdapterId))
+                || (string.IsNullOrWhiteSpace(snapshot.AdapterId)
+                    && string.IsNullOrWhiteSpace(snapshot.AdapterMacAddress)))
                 throw new InvalidDataException("Recovery snapshot is incomplete or unsupported.");
             snapshot.ToOriginalConfig();
             snapshot.ToSubnetConfig();
