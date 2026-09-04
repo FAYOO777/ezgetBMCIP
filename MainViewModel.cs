@@ -462,8 +462,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
+        var firewallAssessment = await AssessFirewallAsync(SelectedAdapterItem);
         if (!RequestConsent(ConsentNotice.CreateNetworkChange(
-                SelectedAdapterItem, _subnetConfig, originalConfig)))
+                SelectedAdapterItem, _subnetConfig, originalConfig, firewallAssessment)))
         {
             LogInfo("Network change consent declined");
             return;
@@ -609,7 +610,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         LogInfo("DHCP lease wait started");
         SetStep(2, StepState.Active, "链路已 UP，正在等待 IPMI 通过 DHCP 获取地址，最多等待 3 分钟。");
-        SetBusy("正在等待 IPMI 获取 IP...", "如果 3 分钟内没有响应，请检查网线是否插在 IPMI 管理口。");
+        SetBusy("正在等待 IPMI 获取 IP...", "如果 3 分钟内没有完成，请检查 BMC 是否使用固定 IP、是否允许当前程序通过防火墙，以及网线是否连接管理口。");
         StartEllipsis();
 
         var tcs = new TaskCompletionSource<DhcpLease>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -646,7 +647,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            throw new TimeoutException("3 分钟内未收到 IPMI 的 DHCP 请求，请检查网线是否插在 IPMI 管理口。");
+            var adapter = _selectedAdapter ?? SelectedAdapterItem;
+            var firewallAssessment = adapter is null
+                ? FirewallAssessmentService.CreateUnknown(
+                    FirewallAssessmentService.GetCurrentExecutablePath(),
+                    "No selected adapter was available for the timeout assessment.")
+                : await AssessFirewallAsync(adapter);
+            throw new TimeoutException(firewallAssessment.BuildTimeoutGuidance());
         }
         finally
         {
@@ -1052,11 +1059,33 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             0 => "未检测到网线连接。请确认网线直连服务器 IPMI/BMC 管理口，不是普通业务网口或交换机口。原始错误：" + message,
             1 => "配置本机网卡失败。请确认已用管理员权限运行，并检查安全软件是否拦截网络配置。原始错误：" + message,
-            2 => "未收到 BMC 的 DHCP 请求。请确认线接在 IPMI/BMC 管理口，并确认 BMC 设置为 DHCP 获取地址。原始错误：" + message,
+            2 => message.StartsWith("应用层在等待期内", StringComparison.Ordinal)
+                ? message
+                : "等待 BMC DHCP 流程时遇到问题。请检查防火墙、BMC 网络模式和管理口连接。原始错误：" + message,
             3 => "已分配 BMC 地址，但确认或打开管理页面时遇到问题。可以重新检测或手动访问。原始错误：" + message,
             4 => "恢复原始网卡配置时失败。请再次点击「恢复网卡并退出」，或手动检查网卡 IPv4 设置。原始错误：" + message,
             _ => message
         };
+    }
+
+    private static async Task<FirewallAssessment> AssessFirewallAsync(WiredAdapter adapter)
+    {
+        var assessment = await FirewallAssessmentService.AssessAsync(
+            adapter.Name,
+            adapter.Id,
+            adapter.MacAddress,
+            FirewallAssessmentService.GetCurrentExecutablePath());
+        AppLogger.Log("Firewall assessment: adapter=" + adapter.Name +
+            " interfaceIndex=" + (assessment.InterfaceIndex?.ToString() ?? "unknown") +
+            " category=" + assessment.NetworkCategory +
+            " enabled=" + (assessment.SelectedFirewallEnabled?.ToString() ?? "unknown") +
+            " risk=" + assessment.RiskLevel +
+            " appAllow=" + assessment.HasMatchingProgramAllow +
+            " appBlock=" + assessment.HasMatchingProgramBlock +
+            " portAllow=" + assessment.HasMatchingPortAllow +
+            " portBlock=" + assessment.HasMatchingPortBlock +
+            (string.IsNullOrWhiteSpace(assessment.Error) ? "" : " error=" + assessment.Error));
+        return assessment;
     }
 
     // ════════════════════════════════════════════════════════════════

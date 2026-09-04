@@ -254,9 +254,9 @@ namespace EzGetBmcIp.Legacy
             }
         }
 
-        private Task StartFlowAsync()
+        private async Task StartFlowAsync()
         {
-            if (SelectedAdapterItem == null) return Task.CompletedTask;
+            if (SelectedAdapterItem == null) return;
             if (!_subnetConfig.IsPrivateSubnet)
             {
                 var message = _subnetConfig.ValidationError ?? "\u81ea\u5b9a\u4e49\u7f51\u6bb5\u65e0\u6548\u3002";
@@ -265,7 +265,7 @@ namespace EzGetBmcIp.Legacy
                 DetailText = message + " \u516c\u7f51\u5730\u5740\u53ef\u80fd\u88ab\u7cfb\u7edf\u4ee3\u7406\u6216\u8def\u7531\u7b56\u7565\u62e6\u622a\uff0c\u76f4\u8fde\u573a\u666f\u8bf7\u4f7f\u7528\u79c1\u6709\u7f51\u6bb5\u3002";
                 BadgeText = "\u7f51\u6bb5\u9519\u8bef";
                 BadgeColor = "#D13438";
-                return Task.CompletedTask;
+                return;
             }
 
             AdapterOriginalConfig originalConfig;
@@ -280,14 +280,15 @@ namespace EzGetBmcIp.Legacy
                 DetailText = "为避免覆盖现有网络设置，已停止操作：" + ex.Message;
                 BadgeText = "无法确认";
                 BadgeColor = "#D13438";
-                return Task.CompletedTask;
+                return;
             }
 
+            var firewallAssessment = await AssessFirewallAsync(SelectedAdapterItem);
             if (!RequestConsent(ConsentNotice.CreateNetworkChange(
-                    SelectedAdapterItem, _subnetConfig, originalConfig)))
+                    SelectedAdapterItem, _subnetConfig, originalConfig, firewallAssessment)))
             {
                 Log("Network change consent declined");
-                return Task.CompletedTask;
+                return;
             }
 
             _selectedAdapter = SelectedAdapterItem;
@@ -306,7 +307,6 @@ namespace EzGetBmcIp.Legacy
             PreferredBmcScheme = "https";
             EndpointStatusText = "等待 BMC 管理页面响应。";
             _flowTask = RunFlowAsync(_flowCts.Token);
-            return Task.CompletedTask;
         }
 
         private async Task RunFlowAsync(CancellationToken ct)
@@ -434,7 +434,7 @@ namespace EzGetBmcIp.Legacy
         {
             Log("DHCP lease wait started");
             StatusText = "\u6b63\u5728\u7b49\u5019 BMC \u4e0a\u7ebf";
-            ActivityText = "\u7b49\u5f85 IPMI \u8bbe\u5907\u901a\u8fc7 DHCP \u83b7\u53d6\u5730\u5740\uff0c\u6700\u591a 3 \u5206\u949f\u3002";
+            ActivityText = "等待 IPMI/BMC 通过 DHCP 获取地址，最多 3 分钟；如未完成，请检查固定 IP、防火墙和管理口连接。";
 
             var tcs = new TaskCompletionSource<DhcpLease>(TaskCreationOptions.RunContinuationsAsynchronously);
             void Handler(object s, DhcpLease l) => tcs.TrySetResult(l);
@@ -465,7 +465,19 @@ namespace EzGetBmcIp.Legacy
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
                 Log("DHCP lease wait timed out");
-                throw new TimeoutException("\u672a\u83b7\u53d6\u5230 BMC \u5730\u5740\uff0c\u8bf7\u68c0\u67e5\u7f51\u7ebf\u662f\u5426\u6b63\u786e\u8fde\u63a5\u3002");
+                var adapter = _selectedAdapter ?? SelectedAdapterItem;
+                FirewallAssessment firewallAssessment;
+                if (adapter == null)
+                {
+                    firewallAssessment = FirewallAssessmentService.CreateUnknown(
+                        FirewallAssessmentService.GetCurrentExecutablePath(),
+                        "No selected adapter was available for the timeout assessment.");
+                }
+                else
+                {
+                    firewallAssessment = await AssessFirewallAsync(adapter);
+                }
+                throw new TimeoutException(firewallAssessment.BuildTimeoutGuidance());
             }
             finally
             {
@@ -479,6 +491,26 @@ namespace EzGetBmcIp.Legacy
             if (mac == null || mac.Length == 0)
                 return "none";
             return BitConverter.ToString(mac);
+        }
+
+        private static async Task<FirewallAssessment> AssessFirewallAsync(WiredAdapter adapter)
+        {
+            var assessment = await FirewallAssessmentService.AssessAsync(
+                adapter.Name,
+                adapter.Id,
+                adapter.MacAddress,
+                FirewallAssessmentService.GetCurrentExecutablePath());
+            Log("Firewall assessment: adapter=" + adapter.Name +
+                " interfaceIndex=" + (assessment.InterfaceIndex.HasValue ? assessment.InterfaceIndex.Value.ToString() : "unknown") +
+                " category=" + assessment.NetworkCategory +
+                " enabled=" + (assessment.SelectedFirewallEnabled.HasValue ? assessment.SelectedFirewallEnabled.Value.ToString() : "unknown") +
+                " risk=" + assessment.RiskLevel +
+                " appAllow=" + assessment.HasMatchingProgramAllow +
+                " appBlock=" + assessment.HasMatchingProgramBlock +
+                " portAllow=" + assessment.HasMatchingPortAllow +
+                " portBlock=" + assessment.HasMatchingPortBlock +
+                (string.IsNullOrWhiteSpace(assessment.Error) ? "" : " error=" + assessment.Error));
+            return assessment;
         }
 
         private async Task RetryEndpointProbeAsync()
