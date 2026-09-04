@@ -38,6 +38,8 @@ internal static class Program
             await CancellationAfterMutationRequiresRecoveryAsync();
             WatchdogStartupDoesNotCreateInteractiveWindow();
             DhcpModeUsesRegistryValues();
+            FirewallAssessmentClassifiesRisk();
+            await FirewallAssessmentLiveProbeFailsOpenAsync();
             ConsentNoticeDescribesNetworkChanges();
             ConsentDialogRequiresActiveAcknowledgement();
             SupportBundleShortcutMatches();
@@ -106,6 +108,143 @@ internal static class Program
             "Current DHCP address, gateway, and DNS were not disclosed.");
         Assert(dhcpText.Contains("重新获取的租约可能不同"), "DHCP lease caveat was not disclosed.");
         Assert(dhcpText.Contains("不保证立即恢复联网"), "DHCP connectivity caveat was not disclosed.");
+    }
+
+    private static void FirewallAssessmentClassifiesRisk()
+    {
+        const string adapter = "I350-右2";
+        const string currentExe = @"C:\Tools\ezgetBMCIP-lite.exe";
+
+        var publicNoRule = FirewallAssessmentService.CreateForTests(
+            adapter, "Public", true, currentExe, Array.Empty<FirewallRuleEvidence>());
+        Assert(publicNoRule.RiskLevel == FirewallRiskLevel.Warning,
+            "Public firewall without a matching application rule must warn.");
+        Assert(publicNoRule.BuildConsentWarning().Contains("未发现匹配当前程序路径"),
+            "Missing application rule warning was not actionable.");
+
+        var portAllow = Rule("ezgetBMCIP DHCP Server", "Allow", "Any", "UDP", "67", adapter, "Public");
+        var publicPortOnly = FirewallAssessmentService.CreateForTests(
+            adapter, "Public", true, currentExe, new[] { portAllow });
+        Assert(publicPortOnly.RiskLevel == FirewallRiskLevel.Warning && publicPortOnly.HasMatchingPortAllow,
+            "A port-only allow rule must remain a compatibility warning.");
+        Assert(publicPortOnly.BuildConsentWarning().Contains("端口允许规则"),
+            "Port-only compatibility warning was not distinguished.");
+
+        var appAllow = Rule("ezgetBMCIP app allow", "Allow", currentExe, "UDP", "67", adapter, "Private, Public");
+        var publicAppAllow = FirewallAssessmentService.CreateForTests(
+            adapter, "Public", true, currentExe, new[] { appAllow });
+        Assert(publicAppAllow.RiskLevel == FirewallRiskLevel.None && publicAppAllow.HasMatchingProgramAllow,
+            "A current-path UDP application allow rule must clear the warning.");
+
+        var appBlock = Rule("UDP Query User", "Block", currentExe, "Any", "Any", adapter, "Public");
+        var blocked = FirewallAssessmentService.CreateForTests(
+            adapter, "Public", true, currentExe, new[] { portAllow, appAllow, appBlock });
+        Assert(blocked.RiskLevel == FirewallRiskLevel.High && blocked.HasMatchingProgramBlock,
+            "An explicit application block must take precedence over allow rules.");
+        Assert(blocked.BuildTimeoutGuidance().Contains("显式入站阻止规则") &&
+               blocked.BuildTimeoutGuidance().Contains("固定 IP"),
+            "High-risk timeout guidance must include firewall and fixed-IP causes.");
+
+        var oldPathAllow = Rule("old path", "Allow", @"C:\Desktop\ezgetBMCIP-lite.exe", "UDP", "67", adapter, "Public");
+        var movedExe = FirewallAssessmentService.CreateForTests(
+            adapter, "Public", true, currentExe, new[] { oldPathAllow });
+        Assert(movedExe.RiskLevel == FirewallRiskLevel.Warning && !movedExe.HasMatchingProgramAllow,
+            "An allow rule for an old executable path must not match the current executable.");
+
+        var tcpOnly = Rule("TCP Query User", "Allow", currentExe, "TCP", "Any", adapter, "Public");
+        var tcpAssessment = FirewallAssessmentService.CreateForTests(
+            adapter, "Public", true, currentExe, new[] { tcpOnly });
+        Assert(tcpAssessment.RiskLevel == FirewallRiskLevel.Warning && !tcpAssessment.HasMatchingProgramAllow,
+            "A TCP-only application rule must not cover DHCP UDP/67.");
+
+        var privateNoRule = FirewallAssessmentService.CreateForTests(
+            adapter, "Private", true, currentExe, Array.Empty<FirewallRuleEvidence>());
+        Assert(privateNoRule.RiskLevel == FirewallRiskLevel.Warning,
+            "Private firewall without a matching application rule must also warn.");
+
+        var disabled = FirewallAssessmentService.CreateForTests(
+            adapter, "Public", false, currentExe, Array.Empty<FirewallRuleEvidence>());
+        Assert(disabled.RiskLevel == FirewallRiskLevel.None && !disabled.HasWarning,
+            "A disabled selected firewall profile must be reported without a warning card.");
+
+        var unknown = FirewallAssessmentService.CreateForTests(
+            adapter, "Unknown", null, currentExe, Array.Empty<FirewallRuleEvidence>());
+        Assert(unknown.RiskLevel == FirewallRiskLevel.Unknown && !unknown.HasWarning,
+            "Unavailable firewall assessment must fail open without a blocking warning.");
+        Assert(unknown.BuildTimeoutGuidance().Contains("不能据此排除拦截") &&
+               unknown.BuildTimeoutGuidance().Contains("固定 IP"),
+            "Unknown timeout guidance must preserve both uncertainty and the fixed-IP cause.");
+
+        var rulesUnavailable = new FirewallAssessment
+        {
+            AdapterName = adapter,
+            NetworkCategory = "Public",
+            ExecutablePath = currentExe,
+            Error = "Firewall rules: access denied"
+        };
+        rulesUnavailable.Profiles.Add(new FirewallProfileEvidence { Name = "Public", Enabled = true });
+        rulesUnavailable.Evaluate();
+        Assert(rulesUnavailable.RiskLevel == FirewallRiskLevel.Unknown && !rulesUnavailable.HasWarning,
+            "A partial assessment without rule evidence must fail open instead of showing a false warning.");
+
+        var notice = ConsentNotice.CreateNetworkChange(
+            new WiredAdapter(adapter, "直连 BMC 管理口", "test-id", "001122334455"),
+            new SubnetConfig(),
+            AdapterOriginalConfig.CreateDhcp(),
+            blocked);
+        Assert(notice.HasWarning && notice.WarningText.Contains(currentExe),
+            "The network consent notice did not include the detected firewall warning.");
+    }
+
+    private static FirewallRuleEvidence Rule(
+        string name,
+        string action,
+        string program,
+        string protocol,
+        string localPort,
+        string interfaceAlias,
+        string profile)
+    {
+        return new FirewallRuleEvidence
+        {
+            Name = name,
+            DisplayName = name,
+            Enabled = "True",
+            Direction = "Inbound",
+            Action = action,
+            Profile = profile,
+            Program = program,
+            Protocol = protocol,
+            LocalPort = localPort,
+            InterfaceAlias = interfaceAlias,
+            PolicyStoreSourceType = "Local",
+            PolicyStoreSource = "PersistentStore",
+            Status = "OK"
+        };
+    }
+
+    private static async Task FirewallAssessmentLiveProbeFailsOpenAsync()
+    {
+        var networkInterface = NetworkInterface.GetAllNetworkInterfaces().FirstOrDefault(item =>
+        {
+            try { return item.GetIPProperties().GetIPv4Properties() is not null; }
+            catch { return false; }
+        });
+        if (networkInterface is null)
+            return;
+
+        var assessment = await FirewallAssessmentService.AssessAsync(
+            networkInterface.Name,
+            networkInterface.Id,
+            networkInterface.GetPhysicalAddress().ToString(),
+            FirewallAssessmentService.GetCurrentExecutablePath());
+        var diagnostics = assessment.ToDiagnosticText();
+        Assert(assessment.InterfaceIndex.HasValue,
+            "Live firewall assessment did not resolve a known interface index.");
+        Assert(diagnostics.Contains("NetworkCategory:", StringComparison.Ordinal) &&
+               diagnostics.Contains("Firewall profiles (ActiveStore)", StringComparison.Ordinal) &&
+               diagnostics.Contains("Relevant inbound firewall rules (ActiveStore)", StringComparison.Ordinal),
+            "Live firewall assessment did not produce a complete fail-open diagnostic section.");
     }
 
     private static void SupportBundleShortcutMatches()
@@ -221,15 +360,41 @@ internal static class Program
                 ApplicationThemeManager.Apply(ApplicationTheme.Light, WindowBackdropType.None, updateAccent: true);
 
                 var dialog = new ConsentDialog(ConsentNotice.CreateUsageRisk());
+                dialog.Show();
+                dialog.UpdateLayout();
                 var acknowledgement = (System.Windows.Controls.CheckBox)dialog.FindName("AcknowledgementCheckBox");
                 var agreeButton = (Wpf.Ui.Controls.Button)dialog.FindName("AgreeButton");
+                var warningBorder = (System.Windows.Controls.Border)dialog.FindName("FirewallWarningBorder");
                 Assert(acknowledgement.IsChecked != true, "Consent acknowledgement must start unchecked.");
                 Assert(!agreeButton.IsEnabled, "Consent button must start disabled.");
+                Assert(warningBorder.Visibility == Visibility.Collapsed,
+                    "Consent warning must be hidden when no firewall risk was supplied.");
 
                 acknowledgement.IsChecked = true;
                 Assert(agreeButton.IsEnabled, "Consent button did not enable after acknowledgement.");
 
                 dialog.Close();
+
+                var warningAssessment = FirewallAssessmentService.CreateForTests(
+                    "I350-右2", "Public", true, @"C:\Tools\ezgetBMCIP-lite.exe",
+                    Array.Empty<FirewallRuleEvidence>());
+                var warningNotice = ConsentNotice.CreateNetworkChange(
+                    new WiredAdapter("I350-右2", "直连 BMC 管理口", "test-id", "001122334455"),
+                    new SubnetConfig(),
+                    AdapterOriginalConfig.CreateDhcp(),
+                    warningAssessment);
+                var warningDialog = new ConsentDialog(warningNotice);
+                warningDialog.Show();
+                warningDialog.UpdateLayout();
+                var visibleWarning = (System.Windows.Controls.Border)warningDialog.FindName("FirewallWarningBorder");
+                var warningAgreeButton = (Wpf.Ui.Controls.Button)warningDialog.FindName("AgreeButton");
+                Assert(visibleWarning.Visibility == Visibility.Visible,
+                    "Detected firewall risk was not rendered in the consent dialog.");
+                Assert(!warningAgreeButton.IsEnabled,
+                    "Firewall warning must not bypass active consent acknowledgement.");
+                Assert(warningDialog.ActualHeight <= warningDialog.MaxHeight,
+                    "Firewall warning caused the consent dialog to exceed its maximum height.");
+                warningDialog.Close();
                 app.Shutdown();
             }
             catch (Exception ex)

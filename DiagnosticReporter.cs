@@ -91,6 +91,29 @@ internal static class DiagnosticReporter
         progress.Report(new SupportBundleProgress(70, "正在检查 DHCP 端口占用..."));
         await AppendPowerShellAsync(sb, "UDP 67 owning process", "Get-NetUDPEndpoint -LocalPort 67 -ErrorAction SilentlyContinue | ForEach-Object { $p = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue; [PSCustomObject]@{LocalAddress=$_.LocalAddress;LocalPort=$_.LocalPort;OwningProcess=$_.OwningProcess;ProcessName=$p.ProcessName} } | Format-List");
 
+        progress.Report(new SupportBundleProgress(72, "正在检查网络类别和防火墙规则..."));
+        AppendHeader(sb, "Selected adapter network profile and Windows Defender Firewall");
+        if (selected is null)
+        {
+            sb.AppendLine("No adapter selected; firewall assessment skipped.");
+        }
+        else
+        {
+            try
+            {
+                var firewallAssessment = await FirewallAssessmentService.AssessAsync(
+                    selected.Name,
+                    selected.Id,
+                    selected.MacAddress,
+                    FirewallAssessmentService.GetCurrentExecutablePath());
+                sb.AppendLine(firewallAssessment.ToDiagnosticText());
+            }
+            catch (Exception ex)
+            {
+                sb.AppendLine("Firewall assessment failed without aborting support collection: " + ex);
+            }
+        }
+
         AppendHeader(sb, "Current session application log");
         sb.AppendLine(ReadCurrentSessionLogLines(300));
 

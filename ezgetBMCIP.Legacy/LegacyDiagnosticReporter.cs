@@ -92,6 +92,29 @@ namespace EzGetBmcIp.Legacy
             progress.Report(new SupportBundleProgress(70, "正在读取网卡配置..."));
             await AppendCommandAsync(sb, "Network interface configuration", "netsh.exe", "interface ip show config");
 
+            progress.Report(new SupportBundleProgress(72, "正在检查网络类别和防火墙规则..."));
+            AppendHeader(sb, "Selected adapter network profile and Windows Defender Firewall");
+            if (selected == null)
+            {
+                sb.AppendLine("No adapter selected; firewall assessment skipped.");
+            }
+            else
+            {
+                try
+                {
+                    var firewallAssessment = await FirewallAssessmentService.AssessAsync(
+                        selected.Name,
+                        selected.Id,
+                        selected.MacAddress,
+                        FirewallAssessmentService.GetCurrentExecutablePath());
+                    sb.AppendLine(firewallAssessment.ToDiagnosticText());
+                }
+                catch (Exception ex)
+                {
+                    sb.AppendLine("Firewall assessment failed without aborting support collection: " + ex);
+                }
+            }
+
             progress.Report(new SupportBundleProgress(75, "正在写入诊断报告..."));
             await Task.Run(() => File.WriteAllText(reportPath, sb.ToString(), Utf8WithBom));
             App.LogSupport("Legacy diagnostics report written: " + reportPath);

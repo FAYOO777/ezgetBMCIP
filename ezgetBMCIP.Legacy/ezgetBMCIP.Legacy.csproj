@@ -15,6 +15,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\ConsentNotice.cs" Link="ConsentNotice.cs" />
+    <Compile Include="..\FirewallAssessment.cs" Link="FirewallAssessment.cs" />
     <Compile Include="..\SupportBundleCollector.cs" Link="SupportBundleCollector.cs" />
   </ItemGroup>
   <ItemGroup>

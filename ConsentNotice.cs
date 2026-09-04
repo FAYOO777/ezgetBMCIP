@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,13 +17,15 @@ internal sealed class ConsentNotice
         string intro,
         IReadOnlyList<string> items,
         string acknowledgementText,
-        string confirmButtonText)
+        string confirmButtonText,
+        string warningText = "")
     {
         Title = title;
         Intro = intro;
         Items = items;
         AcknowledgementText = acknowledgementText;
         ConfirmButtonText = confirmButtonText;
+        WarningText = warningText ?? string.Empty;
     }
 
     public string Title { get; private set; }
@@ -30,6 +33,8 @@ internal sealed class ConsentNotice
     public IReadOnlyList<string> Items { get; private set; }
     public string AcknowledgementText { get; private set; }
     public string ConfirmButtonText { get; private set; }
+    public string WarningText { get; private set; }
+    public bool HasWarning { get { return !string.IsNullOrWhiteSpace(WarningText); } }
 
     public static ConsentNotice CreateUsageRisk()
     {
@@ -51,7 +56,8 @@ internal sealed class ConsentNotice
     public static ConsentNotice CreateNetworkChange(
         WiredAdapter adapter,
         SubnetConfig subnetConfig,
-        AdapterOriginalConfig originalConfig)
+        AdapterOriginalConfig originalConfig,
+        FirewallAssessment? firewallAssessment = null)
     {
         return new ConsentNotice(
             "网络修改风险告知",
@@ -65,7 +71,8 @@ internal sealed class ConsentNotice
                 "本工具不会主动还原 BMC 的网络设置。强制结束程序时恢复守护会尝试恢复本机网卡；若仍未恢复，请在目标网卡重新连接后再次启动本工具。"
             },
             "我已核对上述网络变更与恢复目标，确认继续",
-            "同意并开始");
+            "同意并开始",
+            firewallAssessment == null ? "" : firewallAssessment.BuildConsentWarning());
     }
 
     private static string BuildRestoreDescription(AdapterOriginalConfig originalConfig)
