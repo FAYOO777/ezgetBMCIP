@@ -62,7 +62,9 @@ ezgetBMCIP
 
 ## 下载
 
-每次 Release 提供多个下载包：[📥 下载页](https://dl.fayoo.fun) / [GitHub Releases](https://github.com/FAYOO777/ezgetBMCIP/releases)
+每次 Release 提供多个下载包：[📥 下载页](https://ezgetbmcip.pages.dev/) / [GitHub Releases](https://github.com/FAYOO777/ezgetBMCIP/releases)。
+
+`dl.fayoo.fun` 仅承载下载文件和版本索引，不是网页入口。
 
 | 版本 | 说明 |
 |---|---|
