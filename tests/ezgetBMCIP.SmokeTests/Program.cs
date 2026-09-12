@@ -1744,16 +1744,16 @@ internal static class Program
         var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        var accepted = listener.AcceptTcpClientAsync();
+        var responder = AcceptAndCloseOnceAsync(listener);
         try
         {
             var outcome = await BmcEndpointProbe.ProbeForEndpointAsync(
                 CreateLoopbackProbeRequest(),
-                TimeSpan.FromMilliseconds(300),
+                TimeSpan.FromSeconds(2),
                 CancellationToken.None,
                 candidates: new[] { new BmcEndpointCandidate { Scheme = "http", Port = port } },
                 networkEvidenceProvider: new FixedEndpointNetworkEvidenceProvider());
-            using var client = await accepted.WaitAsync(TimeSpan.FromSeconds(2));
+            await responder.WaitAsync(TimeSpan.FromSeconds(2));
 
             Assert(outcome.VerifiedEndpoint is null,
                 "A bare TCP handshake must never be treated as a BMC management service.");
@@ -1908,6 +1908,14 @@ internal static class Program
         _ = await stream.ReadAsync(request, 0, request.Length);
         var bytes = Encoding.ASCII.GetBytes(response);
         await stream.WriteAsync(bytes, 0, bytes.Length);
+    }
+
+    private static async Task AcceptAndCloseOnceAsync(TcpListener listener)
+    {
+        using var client = await listener.AcceptTcpClientAsync();
+        using var stream = client.GetStream();
+        var request = new byte[1024];
+        _ = await stream.ReadAsync(request, 0, request.Length);
     }
 
     private static void NativeIpv4AbiPreservesWireBytes()
