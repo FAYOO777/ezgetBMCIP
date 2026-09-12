@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="Version.props" />
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
@@ -9,13 +10,15 @@
     <ApplicationIcon>ezgetBMCIP.ico</ApplicationIcon>
     <AssemblyName>ezgetBMCIP</AssemblyName>
     <RootNamespace>EzGetBmcIp</RootNamespace>
-    <Version>1.5.1</Version>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**;ezgetBMCIP.Core\**;ezgetBMCIP.Core.Legacy\**;ezgetBMCIP.Legacy\**;tests\**</DefaultItemExcludes>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(DhcpOldLeaseStudy)' == 'true'">
+    <DefineConstants>$(DefineConstants);DHCP_OLD_LEASE_STUDY</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="WPF-UI" Version="4.*" />

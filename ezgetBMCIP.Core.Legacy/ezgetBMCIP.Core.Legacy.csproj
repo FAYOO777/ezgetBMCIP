@@ -1,18 +1,25 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\Version.props" />
   <PropertyGroup>
     <TargetFramework>net46</TargetFramework>
     <LangVersion>8</LangVersion>
     <RootNamespace>EzGetBmcIp</RootNamespace>
     <AssemblyName>ezgetBMCIP.Core.Legacy</AssemblyName>
-    <Version>1.5.1</Version>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System.Management" />
+    <Reference Include="System.Runtime.Serialization" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="System.ValueTuple" Version="4.5.0" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Remove="BmcEndpointProbe.cs" />
+    <Compile Include="..\BmcDiscovery.cs" Link="BmcDiscovery.cs" />
+    <Compile Include="..\BmcReachabilityProbe.cs" Link="BmcReachabilityProbe.cs" />
+    <Compile Include="..\BmcEndpointProbe.cs" Link="BmcEndpointProbe.cs" />
+    <Compile Include="..\BmcHistoryStore.cs" Link="BmcHistoryStore.cs" />
     <Compile Include="..\ProcessOutputDecoder.cs" Link="ProcessOutputDecoder.cs" />
+    <Compile Include="..\DhcpRequestPolicy.cs" Link="DhcpRequestPolicy.cs" />
   </ItemGroup>
 </Project>

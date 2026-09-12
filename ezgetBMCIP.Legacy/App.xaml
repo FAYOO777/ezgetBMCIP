@@ -5,5 +5,9 @@
     <Application.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
         <local:InvertBoolConverter x:Key="InvertBoolConv" />
+        <local:SessionPageKindToVisibilityConverter x:Key="PageToVis" />
+        <local:PresentationSeverityToBrushConverter x:Key="SeverityToBrush" />
+        <local:LegacyRuntimeStageBrushConverter x:Key="RuntimeStageBrush" />
+        <local:LegacyRuntimeActionVisibilityConverter x:Key="RuntimeActionToVis" />
     </Application.Resources>
 </Application>

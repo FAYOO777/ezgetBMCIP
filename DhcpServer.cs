@@ -207,37 +207,39 @@ internal sealed class DhcpServer : IDisposable
             return;
         }
 
-        var lease = GetOrCreateLease(mac);
-
-        // Fix 2: For DHCPREQUEST, validate against Option 50 (Requested IP Address).
-        // If the MAC lookup created/mapped to a different IP than what the client
-        // requested, remap to the lease that owns the requested IP.
         if (messageType == 3)
         {
-            if (!IsRequestForServer(request, _serverIp, out var requestedServer))
+            var decision = DhcpRequestPolicy.Classify(request, _serverIp, _mask, _poolStart);
+            Logger?.Invoke("DHCP: REQUEST xid=0x" + GetTransactionId(request) +
+                " mac=" + MacBytesToString(mac) + " " + decision.ToDiagnosticText());
+
+            if (decision.Disposition == DhcpRequestDisposition.Ignore)
             {
-                Logger?.Invoke("DHCP: REQUEST ignored because it selected another server: " + requestedServer);
                 return;
             }
 
-            var opt50 = GetOption(request, 50);
-            if (opt50 is { Length: 4 })
+            if (decision.Disposition == DhcpRequestDisposition.Nak)
             {
-                var requestedIp = new IPAddress(opt50);
-                Logger?.Invoke("DHCP: Requested IP (Option 50) = " + requestedIp);
-                lock (_sync)
+#if DHCP_OLD_LEASE_STUDY
+                if (DhcpOldLeaseStudy.ShouldSuppressOldCiaddrNak(decision))
                 {
-                    var requestedLease = _leases.Values.FirstOrDefault(l => l.IpAddress.Equals(requestedIp));
-                    if (requestedLease != null && requestedLease != lease)
-                    {
-                        var key = Convert.ToHexString(mac);
-                        _leases[key] = requestedLease;
-                        lease = requestedLease;
-                    }
+                    Logger?.Invoke("[TEST ONLY] DHCP: old-ciaddr NAK suppressed; action=Ignore");
+                    return;
                 }
+#endif
+                var nak = DhcpNakResponse.Build(request, _serverIp);
+                Logger?.Invoke("DHCP: REQUEST from " + MacBytesToString(mac) +
+                    " -> NAK broadcast " + DhcpNakResponse.DestinationAddress);
+                if (_udp is not null)
+                {
+                    DhcpNakResponse.Send(_udp.Client, nak, _serverIp, _expectedInterfaceIndex);
+                }
+
+                return;
             }
         }
 
+        var lease = GetOrCreateLease(mac);
         var responseType = messageType == 1 ? (byte)2 : (byte)5;
 
         if (messageType == 1)
@@ -259,6 +261,9 @@ internal sealed class DhcpServer : IDisposable
         }
     }
 
+    internal Task HandlePacketForTestAsync(byte[] request) =>
+        HandlePacketAsync(request, CancellationToken.None);
+
     internal void NotifyLeaseAssigned(DhcpLease lease)
     {
         lock (_sync)
@@ -267,6 +272,9 @@ internal sealed class DhcpServer : IDisposable
     }
 
     private static string MacBytesToString(byte[] mac) => string.Join("-", mac.Select(b => b.ToString("X2")));
+
+    private static string GetTransactionId(byte[] request) =>
+        string.Concat(request.Skip(4).Take(4).Select(b => b.ToString("X2")));
 
     private static int ResolveInterfaceIndex(WiredAdapter adapter)
     {
@@ -364,12 +372,12 @@ internal sealed class DhcpServer : IDisposable
         using var options = new MemoryStream();
         WriteOption(options, 53, new[] { messageType });
         WriteOption(options, 54, serverIp.GetAddressBytes());
-        WriteOption(options, 51, UInt32Bytes(3600));
+        WriteOption(options, 51, UInt32Bytes(DhcpOldLeaseStudy.LeaseSeconds));
         WriteOption(options, 1, mask.GetAddressBytes());
         WriteOption(options, 3, serverIp.GetAddressBytes());
         WriteOption(options, 6, serverIp.GetAddressBytes());
-        WriteOption(options, 58, UInt32Bytes(1800));
-        WriteOption(options, 59, UInt32Bytes(3150));
+        WriteOption(options, 58, UInt32Bytes(DhcpOldLeaseStudy.RenewalSeconds));
+        WriteOption(options, 59, UInt32Bytes(DhcpOldLeaseStudy.RebindingSeconds));
         options.WriteByte(255);
 
         var optionBytes = options.ToArray();

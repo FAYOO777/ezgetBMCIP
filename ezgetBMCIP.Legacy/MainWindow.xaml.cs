@@ -25,6 +25,7 @@ namespace EzGetBmcIp.Legacy
             _vm.RequestClose += OnRequestClose;
             _vm.OpenBrowserRequested += OnOpenBrowser;
             _vm.ConsentRequested += OnConsentRequested;
+            _vm.PropertyChanged += OnViewModelPropertyChanged;
             DataContext = _vm;
 
             Closing += OnWindowClosing;
@@ -81,10 +82,28 @@ namespace EzGetBmcIp.Legacy
             return ConsentDialog.ShowFor(this, notice);
         }
 
-        private void OpenBmcButton_Click(object sender, RoutedEventArgs e)
+        private void OnViewModelPropertyChanged(object sender, PropertyChangedEventArgs e)
         {
-            if (!string.IsNullOrEmpty(_vm.DiscoveredIpUrl))
-                OnOpenBrowser(_vm.DiscoveredIpUrl);
+            if (e.PropertyName != nameof(MainViewModel.CurrentSessionPage))
+                return;
+
+            var page = _vm.CurrentSessionPage;
+            if (page != SessionPageKind.RestoreFailed
+                && page != SessionPageKind.EndpointReachable
+                && page != SessionPageKind.EndpointUnreachable
+                && page != SessionPageKind.WaitingForLink
+                && page != SessionPageKind.ConfiguringNetwork
+                && page != SessionPageKind.WaitingForDhcp
+                && page != SessionPageKind.ProbingEndpoint
+                && page != SessionPageKind.DhcpTimedOut
+                && page != SessionPageKind.HistoryRetrySuggestion
+                && page != SessionPageKind.FirewallRepairing
+                && page != SessionPageKind.Failure
+                && page != SessionPageKind.Cancelled
+                && page != SessionPageKind.Restoring)
+                return;
+
+            Dispatcher.BeginInvoke(new Action(() => ContentScroller.ScrollToTop()));
         }
 
         private async void Window_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -93,6 +112,16 @@ namespace EzGetBmcIp.Legacy
                 return;
 
             e.Handled = true;
+            await CollectSupportBundleAsync();
+        }
+
+        private async void CollectSupportBundle_Click(object sender, RoutedEventArgs e)
+        {
+            await CollectSupportBundleAsync();
+        }
+
+        private async Task CollectSupportBundleAsync()
+        {
             if (_isCollectingSupportBundle)
                 return;
 

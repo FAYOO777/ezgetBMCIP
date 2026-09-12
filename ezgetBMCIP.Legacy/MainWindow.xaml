@@ -6,7 +6,7 @@
         Width="700" Height="540"
         MinWidth="660" MinHeight="500"
         WindowStartupLocation="CenterScreen"
-        ResizeMode="CanMinimize"
+        ResizeMode="CanResize"
         Background="#F3F4F6"
         PreviewKeyDown="Window_PreviewKeyDown">
     <Window.Resources>
@@ -18,20 +18,18 @@
             <Setter Property="Padding" Value="18" />
             <Setter Property="Margin" Value="0,0,0,12" />
         </Style>
-
         <Style TargetType="Button">
             <Setter Property="MinHeight" Value="30" />
+            <Setter Property="MinWidth" Value="84" />
             <Setter Property="Padding" Value="14,4" />
             <Setter Property="FontSize" Value="13" />
         </Style>
-
         <Style TargetType="TextBox">
             <Setter Property="Height" Value="28" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="FontFamily" Value="Consolas" />
             <Setter Property="FontSize" Value="14" />
         </Style>
-
         <Style TargetType="ComboBox">
             <Setter Property="Height" Value="30" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -41,26 +39,23 @@
     <Grid Margin="18">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Header -->
-        <Border Grid.Row="0" Style="{StaticResource CardBorder}" BorderBrush="#B8D7F0">
+        <Border Grid.Row="0" Style="{StaticResource CardBorder}" BorderBrush="#B8D7F0"
+                Visibility="{Binding ShowLegacyHeader, Converter={StaticResource BoolToVis}}">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-
                 <StackPanel Grid.Column="0">
                     <TextBlock Text="{Binding StatusText}" FontSize="22" FontWeight="Bold"
                                Foreground="#005A9E" Margin="0,0,0,6" />
-                    <TextBlock Text="{Binding DetailText}" FontSize="13"
-                               Foreground="#555" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding DetailText}" FontSize="13" Foreground="#555"
+                               TextWrapping="Wrap" />
                 </StackPanel>
-
                 <Border Grid.Column="1" Background="#E7F2FF" BorderBrush="#B8D7F0"
                         BorderThickness="1" CornerRadius="12" Padding="10,4"
                         VerticalAlignment="Top" Margin="16,0,0,0">
@@ -69,209 +64,125 @@
             </Grid>
         </Border>
 
-        <!-- Preparation card -->
-        <Border Grid.Row="1" Style="{StaticResource CardBorder}"
-                Visibility="{Binding ShowPreparation, Converter={StaticResource BoolToVis}}">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+        <Grid Grid.Row="1">
+            <ScrollViewer x:Name="ContentScroller" VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled" CanContentScroll="False"
+                          Focusable="False" FocusVisualStyle="{x:Null}" Margin="0,0,0,6">
+                <StackPanel>
+                    <Border Style="{StaticResource CardBorder}"
+                            Visibility="{Binding ShowPreparationContent, Converter={StaticResource BoolToVis}}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                                <TextBlock Text="使用前确认" FontSize="16" FontWeight="Bold" Foreground="#005A9E" Margin="0,0,0,10" />
+                                <TextBlock Text="1. 笔记本有线网卡直连服务器 IPMI/BMC 管理口。" FontSize="13" Foreground="#555" Margin="0,0,0,8" TextWrapping="Wrap" />
+                                <TextBlock Text="2. 此工具会临时修改所选网卡；退出时仅恢复本机网卡，不会还原 BMC 网络设置。" FontSize="13" Foreground="#555" Margin="0,0,0,8" TextWrapping="Wrap" />
+                                <TextBlock Text="3. 仅适用于直连场景，不适合在已有局域网内使用。" FontSize="13" Foreground="#555" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="下一步" Command="{Binding GoNextCommand}" MinWidth="104" Height="34" FontWeight="Bold" VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
 
-                <StackPanel Grid.Column="0" Margin="0,0,20,0">
-                    <TextBlock Text="使用前确认" FontSize="16" FontWeight="Bold"
-                               Foreground="#005A9E" Margin="0,0,0,10" />
-                    <TextBlock Text="1. 笔记本有线网卡直连服务器 IPMI/BMC 管理口。"
-                               FontSize="13" Foreground="#555" Margin="0,0,0,8" TextWrapping="Wrap" />
-                    <TextBlock Text="2. 此工具会临时修改所选网卡；退出时仅恢复本机网卡，不会还原 BMC 网络设置。"
-                               FontSize="13" Foreground="#555" Margin="0,0,0,8" TextWrapping="Wrap" />
-                    <TextBlock Text="3. 仅适用于直连场景，不适合在已有局域网内使用。"
-                               FontSize="13" Foreground="#555" TextWrapping="Wrap" />
-                </StackPanel>
-
-                <Button Grid.Column="1" Content="下一步" Command="{Binding GoNextCommand}"
-                        Width="104" Height="34" FontWeight="Bold" VerticalAlignment="Center" />
-            </Grid>
-        </Border>
-
-        <!-- Adapter / Start card -->
-        <Border Grid.Row="1" Style="{StaticResource CardBorder}"
-                Visibility="{Binding ShowAdapterSelection, Converter={StaticResource BoolToVis}}">
-            <StackPanel>
-                <TextBlock Text="目标网卡" FontSize="14" FontWeight="Bold" Foreground="#333" Margin="0,0,0,10" />
-
-                <Grid Margin="0,0,0,12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="72" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="86" />
-                    </Grid.ColumnDefinitions>
-
-                    <TextBlock Grid.Column="0" Text="选择网卡" VerticalAlignment="Center"
-                               Foreground="#555" FontSize="13" />
-                    <ComboBox Grid.Column="1" ItemsSource="{Binding Adapters}"
-                              SelectedItem="{Binding SelectedAdapterItem}"
-                              DisplayMemberPath="DisplayName" />
-                    <Button Grid.Column="2" Content="开始" Command="{Binding StartCommand}"
-                            IsEnabled="{Binding StartButtonEnabled}"
-                            Margin="12,0,0,0" FontWeight="Bold" />
-                </Grid>
-
-                <Border Background="#F8FAFC" BorderBrush="#E1E5EA" BorderThickness="1"
-                        CornerRadius="6" Padding="12">
-                    <StackPanel>
-                        <TextBlock Text="自定义本机网卡 IP（可选）" FontSize="13" FontWeight="Bold"
-                                   Foreground="#333" Margin="0,0,0,4" />
-                        <TextBlock Text="下方 IP 会临时设置到所选网卡；BMC 不会被主动修改。"
-                                   FontSize="12" Foreground="#777" TextWrapping="Wrap" Margin="0,0,0,6" />
-                        <TextBlock Text="本机网卡临时 IPv4 地址"
-                                   FontSize="12" FontWeight="Bold" Foreground="#555" Margin="0,0,0,4" />
-                        <StackPanel Orientation="Horizontal">
-                            <TextBox Text="{Binding SubnetConfig.Octet1Text, UpdateSourceTrigger=LostFocus}"
-                                     Width="42" TextAlignment="Center" MaxLength="3" />
-                            <TextBlock Text="." VerticalAlignment="Center" Margin="6,0" />
-                            <TextBox Text="{Binding SubnetConfig.Octet2Text, UpdateSourceTrigger=LostFocus}"
-                                     Width="42" TextAlignment="Center" MaxLength="3" />
-                            <TextBlock Text="." VerticalAlignment="Center" Margin="6,0" />
-                            <TextBox Text="{Binding SubnetConfig.Octet3Text, UpdateSourceTrigger=LostFocus}"
-                                     Width="42" TextAlignment="Center" MaxLength="3" />
-                            <TextBlock Text="." VerticalAlignment="Center" Margin="6,0" />
-                            <TextBox Text="{Binding SubnetConfig.Octet4Text, UpdateSourceTrigger=LostFocus}"
-                                     Width="42" TextAlignment="Center" MaxLength="3" />
-                            <TextBlock Text="/24" VerticalAlignment="Center" Margin="10,0,14,0"
-                                       Foreground="#555" FontSize="13" />
-                            <TextBlock VerticalAlignment="Center" FontSize="12" Foreground="#777">
-                                <Run Text="BMC 经 DHCP 预期：" />
-                                <Run Text="{Binding SubnetConfig.PoolDisplay}" />
-                            </TextBlock>
+                    <Border Style="{StaticResource CardBorder}" Visibility="{Binding ShowAdapterSelectionContent, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <TextBlock Text="连接 BMC 的网卡" FontSize="16" FontWeight="Bold" Foreground="#005A9E" Margin="0,0,0,10" />
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="72" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="选择网卡" VerticalAlignment="Center" Foreground="#555" FontSize="13" />
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding Adapters}" SelectedItem="{Binding SelectedAdapterItem}" DisplayMemberPath="DisplayName" IsEnabled="{Binding AdapterSelectionEnabled}" />
+                                <Button Grid.Column="2" Content="开始" Command="{Binding StartCommand}" IsEnabled="{Binding StartButtonEnabled}" MinWidth="96" Margin="12,0,0,0" FontWeight="Bold" />
+                            </Grid>
+                            <Border Background="#F8FAFC" BorderBrush="#E1E5EA" BorderThickness="1" CornerRadius="6" Padding="12">
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="临时直连网段" FontSize="13" FontWeight="Bold" Foreground="#333" />
+                                            <TextBlock FontSize="12" Foreground="#777" Margin="0,3,0,0"><Run Text="本机：" /><Run Text="{Binding SubnetConfig.ServerDisplay, Mode=OneWay}" /><Run Text="；BMC 预期：" /><Run Text="{Binding SubnetConfig.PoolDisplay, Mode=OneWay}" /></TextBlock>
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Content="{Binding AdvancedSubnetToggleText}" Command="{Binding ToggleAdvancedSubnetCommand}" MinWidth="70" Height="28" Padding="10,2" />
+                                    </Grid>
+                                    <StackPanel Visibility="{Binding IsAdvancedSubnetExpanded, Converter={StaticResource BoolToVis}}" Margin="0,10,0,0">
+                                        <TextBlock Text="本机网卡临时 IPv4 地址" FontSize="12" FontWeight="Bold" Foreground="#555" Margin="0,0,0,4" />
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBox Text="{Binding SubnetConfig.Octet1Text, UpdateSourceTrigger=LostFocus}" Width="42" TextAlignment="Center" MaxLength="3" /><TextBlock Text="." VerticalAlignment="Center" Margin="6,0" />
+                                            <TextBox Text="{Binding SubnetConfig.Octet2Text, UpdateSourceTrigger=LostFocus}" Width="42" TextAlignment="Center" MaxLength="3" /><TextBlock Text="." VerticalAlignment="Center" Margin="6,0" />
+                                            <TextBox Text="{Binding SubnetConfig.Octet3Text, UpdateSourceTrigger=LostFocus}" Width="42" TextAlignment="Center" MaxLength="3" /><TextBlock Text="." VerticalAlignment="Center" Margin="6,0" />
+                                            <TextBox Text="{Binding SubnetConfig.Octet4Text, UpdateSourceTrigger=LostFocus}" Width="42" TextAlignment="Center" MaxLength="3" /><TextBlock Text="/24" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="#555" FontSize="13" />
+                                        </StackPanel>
+                                        <TextBlock Text="子网掩码：255.255.255.0；仅支持私有网段：10.x.x.x / 172.16-31.x.x / 192.168.x.x" FontSize="12" Foreground="#777" Margin="0,8,0,0" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
-                        <TextBlock Text="仅支持私有网段：10.x.x.x / 172.16-31.x.x / 192.168.x.x"
-                                   FontSize="12" Foreground="#777" Margin="0,8,0,0" />
-                    </StackPanel>
-                </Border>
-            </StackPanel>
-        </Border>
+                    </Border>
 
-        <!-- Runtime card -->
-        <Border Grid.Row="1" Style="{StaticResource CardBorder}"
-                Visibility="{Binding ShowRunning, Converter={StaticResource BoolToVis}}">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
+                    <Border Style="{StaticResource CardBorder}" Background="#FFFFFF" BorderBrush="{Binding AdapterFirewallNoticeSeverity, Converter={StaticResource SeverityToBrush}}" Visibility="{Binding ShowAdapterFirewallNotice, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding AdapterFirewallNoticeTitle}" FontSize="14" FontWeight="Bold" Foreground="{Binding AdapterFirewallNoticeSeverity, Converter={StaticResource SeverityToBrush}}" />
+                            <TextBlock Text="{Binding FirewallRepairFeedback}" FontSize="12" Foreground="#444" TextWrapping="Wrap" Margin="0,5,0,8" />
+                            <WrapPanel>
+                                <Button Content="重新处理" Command="{Binding RepairFirewallCommand}" IsEnabled="{Binding FirewallRepairEnabled}" MinWidth="104" Margin="0,0,8,4" Visibility="{Binding ShowAdapterFirewallRetry, Converter={StaticResource BoolToVis}}" />
+                                <Button Content="导出支持包" Click="CollectSupportBundle_Click" MinWidth="104" Margin="0,0,0,4" Visibility="{Binding ShowSupportBundleAction, Converter={StaticResource BoolToVis}}" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
 
-                <TextBlock Grid.Row="0" Text="当前状态" FontSize="14" FontWeight="Bold"
-                           Foreground="#333" Margin="0,0,0,10" />
-
-                <Border Grid.Row="1" Background="#F8FAFC" BorderBrush="#E1E5EA"
-                        BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,12">
-                    <StackPanel>
-                        <TextBlock Text="目标网卡" FontSize="12" Foreground="#777" />
-                        <TextBlock Text="{Binding AdapterCardLine}" FontSize="14" FontWeight="Bold"
-                                   Foreground="#222" TextWrapping="Wrap" Margin="0,3,0,10" />
-                        <TextBlock Text="{Binding ActivityText}" FontSize="13" Foreground="#555"
-                                   TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
-
-                <Grid Grid.Row="2">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="{Binding BadgeText}" FontSize="13" FontWeight="Bold"
-                               Foreground="{Binding BadgeColor}" VerticalAlignment="Center" />
-                    <Button Grid.Column="1" Content="取消" Command="{Binding CancelCommand}"
-                            Width="76" />
-                </Grid>
-            </Grid>
-        </Border>
-
-        <!-- Result card -->
-        <Border Grid.Row="2" Style="{StaticResource CardBorder}"
-                Visibility="{Binding ShowIpResult, Converter={StaticResource BoolToVis}}">
-            <StackPanel>
-                <TextBlock Text="已分配 BMC 地址" FontSize="13" FontWeight="Bold"
-                           Foreground="#005A9E" Margin="0,0,0,8" />
-                <TextBlock Text="{Binding DiscoveredIpUrl}" FontSize="24" FontWeight="Bold"
-                           FontFamily="Consolas" Foreground="#222" />
-                <TextBlock Text="{Binding EndpointStatusText}"
-                           FontSize="12" Foreground="#777" Margin="0,8,0,12"
-                           TextWrapping="Wrap" />
-                <StackPanel Orientation="Horizontal">
-                    <Button Content="打开 HTTPS" Command="{Binding OpenHttpsCommand}"
-                            Width="104" Height="34" Margin="0,0,8,0" />
-                    <Button Content="打开 HTTP" Command="{Binding OpenHttpCommand}"
-                            Width="96" Height="34" Margin="0,0,8,0" />
-                    <Button Content="重新检测" Command="{Binding RetryEndpointCommand}"
-                            IsEnabled="{Binding IsEndpointProbeRunning, Converter={StaticResource InvertBoolConv}}"
-                            Width="96" Height="34" />
+                    <Border x:Name="LegacyRuntimeHost" Style="{StaticResource CardBorder}" Padding="0" Visibility="{Binding ShowLegacyRuntimeHost, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <Border Padding="14,11" BorderBrush="#D8DDE6" BorderThickness="0,0,0,1">
+                                <ItemsControl ItemsSource="{Binding LegacyRuntime.Stages}">
+                                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Rows="1" Columns="3" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate><DataTemplate><StackPanel HorizontalAlignment="Center"><StackPanel Orientation="Horizontal" HorizontalAlignment="Center"><Ellipse Width="9" Height="9" Margin="0,0,5,0" VerticalAlignment="Center" Fill="{Binding State, Converter={StaticResource RuntimeStageBrush}}" /><TextBlock Text="{Binding Label}" FontSize="12" Foreground="#333" /></StackPanel><TextBlock Text="{Binding StateText}" FontSize="10" HorizontalAlignment="Center" Margin="0,2,0,0" Foreground="{Binding State, Converter={StaticResource RuntimeStageBrush}}" /></StackPanel></DataTemplate></ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Border>
+                            <Border Padding="18,16" Background="#FFFFFF">
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                        <Border Width="38" Height="38" CornerRadius="19" Margin="0,0,12,0" Background="{Binding LegacyRuntime.Severity, Converter={StaticResource SeverityToBrush}}"><TextBlock Text="{Binding LegacyRuntime.StatusGlyph}" Foreground="White" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+                                        <StackPanel Grid.Column="1"><TextBlock Text="{Binding LegacyRuntime.Title}" FontSize="21" FontWeight="Bold" TextWrapping="Wrap" Foreground="{Binding LegacyRuntime.Severity, Converter={StaticResource SeverityToBrush}}" /><TextBlock Text="{Binding LegacyRuntime.Summary}" FontSize="13" TextWrapping="Wrap" Margin="0,5,0,0" Foreground="#333" /></StackPanel>
+                                    </Grid>
+                                    <Border Margin="0,14,0,0" Padding="12,9" Background="#F8FAFC" BorderBrush="#D8DDE6" BorderThickness="1" CornerRadius="5" Visibility="{Binding LegacyRuntime.HasPrimaryValue, Converter={StaticResource BoolToVis}}"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="{Binding LegacyRuntime.PrimaryValueLabel}" FontSize="12" Foreground="#666" Margin="0,0,15,0" /><TextBlock Grid.Column="1" Text="{Binding LegacyRuntime.PrimaryValue}" FontSize="17" FontWeight="SemiBold" FontFamily="Consolas" TextWrapping="Wrap" Foreground="#222" /></Grid></Border>
+                                    <StackPanel Margin="0,13,0,0" Visibility="{Binding LegacyRuntime.ShowProgressRing, Converter={StaticResource BoolToVis}}"><ProgressBar Height="7" IsIndeterminate="True" /><TextBlock Text="{Binding LegacyRuntime.ProgressText}" FontSize="12" Foreground="#555" TextWrapping="Wrap" Margin="0,6,0,0" /></StackPanel>
+                                    <ItemsControl ItemsSource="{Binding LegacyRuntime.Facts}" Margin="0,13,0,0"><ItemsControl.ItemTemplate><DataTemplate><Grid Margin="0,0,0,6"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="{Binding Label}" FontSize="12" Foreground="#666" Margin="0,0,16,0" /><TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="13" Foreground="#333" TextWrapping="Wrap" /></Grid></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                                    <Border Margin="0,7,0,0" Padding="10,8" Background="#F8FAFC" BorderBrush="{Binding LegacyRuntime.NoticeSeverity, Converter={StaticResource SeverityToBrush}}" BorderThickness="1" CornerRadius="5" Visibility="{Binding LegacyRuntime.HasNotice, Converter={StaticResource BoolToVis}}"><TextBlock Text="{Binding LegacyRuntime.NoticeText}" FontSize="12" TextWrapping="Wrap" Foreground="{Binding LegacyRuntime.NoticeSeverity, Converter={StaticResource SeverityToBrush}}" /></Border>
+                                    <WrapPanel Margin="0,14,0,0">
+                                        <Button Content="打开管理页面" Command="{Binding OpenManagementPageCommand}" MinWidth="126" Height="34" FontWeight="Bold" Visibility="{Binding LegacyRuntime.PrimaryAction, Converter={StaticResource RuntimeActionToVis}, ConverterParameter=OpenManagementPage}" />
+                                        <Button Content="重新检测" Command="{Binding RetryEndpointCommand}" MinWidth="100" Height="34" FontWeight="Bold" Visibility="{Binding LegacyRuntime.PrimaryAction, Converter={StaticResource RuntimeActionToVis}, ConverterParameter=RetryEndpoint}" />
+                                        <Button Content="使用上次网段重试" Command="{Binding PrepareHistoryRetryCommand}" MinWidth="150" Height="34" FontWeight="Bold" Visibility="{Binding LegacyRuntime.PrimaryAction, Converter={StaticResource RuntimeActionToVis}, ConverterParameter=PrepareHistoryRetry}" />
+                                        <Button Content="处理防火墙并准备重试" Command="{Binding RepairFirewallCommand}" MinWidth="170" Height="34" FontWeight="Bold" IsEnabled="{Binding FirewallRepairEnabled}" Visibility="{Binding LegacyRuntime.PrimaryAction, Converter={StaticResource RuntimeActionToVis}, ConverterParameter=RepairFirewall}" />
+                                        <Button Content="导出支持包" Click="CollectSupportBundle_Click" MinWidth="104" Height="34" FontWeight="Bold" Visibility="{Binding LegacyRuntime.PrimaryAction, Converter={StaticResource RuntimeActionToVis}, ConverterParameter=ExportSupport}" />
+                                        <Button Content="导出支持包" Click="CollectSupportBundle_Click" MinWidth="104" Height="34" Margin="8,0,0,0" Visibility="{Binding LegacyRuntime.SecondaryAction, Converter={StaticResource RuntimeActionToVis}, ConverterParameter=ExportSupport}" />
+                                        <Button Content="复制地址" Command="{Binding CopyIpCommand}" MinWidth="90" Height="34" Margin="8,0,0,0" Visibility="{Binding LegacyRuntime.SecondaryAction, Converter={StaticResource RuntimeActionToVis}, ConverterParameter=CopyAddress}" />
+                                    </WrapPanel>
+                                    <Expander Header="其他方式" FontSize="12" Margin="0,3,0,0" Visibility="{Binding LegacyRuntime.ShowOtherEndpointActions, Converter={StaticResource BoolToVis}}"><WrapPanel Margin="0,7,0,0"><Button Content="打开 HTTPS" Command="{Binding OpenHttpsCommand}" MinWidth="94" Height="30" Margin="0,0,7,5" /><Button Content="打开 HTTP" Command="{Binding OpenHttpCommand}" MinWidth="90" Height="30" Margin="0,0,7,5" /><Button Content="重新检测" Command="{Binding RetryEndpointCommand}" MinWidth="90" Height="30" Margin="0,0,7,5" Visibility="{Binding CurrentSessionPage, Converter={StaticResource PageToVis}, ConverterParameter=EndpointReachable}" /></WrapPanel></Expander>
+                                    <TextBlock Text="{Binding BrowserStatusText}" FontSize="12" TextWrapping="Wrap" Foreground="{Binding BrowserStatusSeverity, Converter={StaticResource SeverityToBrush}}" Margin="0,3,0,0" Visibility="{Binding CurrentSessionPage, Converter={StaticResource PageToVis}, ConverterParameter=EndpointReachable}" />
+                                    <Expander Header="查看详情" FontSize="12" Margin="0,10,0,0" Visibility="{Binding LegacyRuntime.HasDetails, Converter={StaticResource BoolToVis}}"><TextBlock Text="{Binding LegacyRuntime.DetailsText}" FontSize="11" Foreground="#555" TextWrapping="Wrap" Margin="0,7,0,0" /></Expander>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
-            </StackPanel>
-        </Border>
+            </ScrollViewer>
 
-        <!-- Bottom row -->
-        <Grid Grid.Row="3" Margin="0,6,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-
-            <TextBlock Grid.Column="0" Text="{Binding VersionText}" Foreground="#777" FontSize="12"
-                       VerticalAlignment="Center" />
-            <TextBlock Grid.Column="1" Text="退出前会停止 DHCP 服务，并恢复所选本机网卡；不会还原 BMC 网络设置。"
-                       Foreground="#777" FontSize="12" VerticalAlignment="Center" Margin="12,0" />
-            <Button Grid.Column="2" Content="退出并恢复网卡" Command="{Binding ExitCommand}"
-                    Width="150" Height="32" />
+            <Border x:Name="StartPreflightOverlay" Background="#E6EEF5" Opacity="0.96" Visibility="{Binding ShowStartPreflightOverlay, Converter={StaticResource BoolToVis}}">
+                <Border Width="360" MinHeight="150" Padding="22" Background="#FFFFFF" BorderBrush="#B8D7F0" BorderThickness="1" CornerRadius="8" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <StackPanel><TextBlock Text="{Binding StartPreflightTitle}" FontSize="18" FontWeight="Bold" Foreground="#005A9E" /><ProgressBar Height="7" IsIndeterminate="True" Margin="0,15,0,10" /><TextBlock Text="{Binding StartPreflightStageText}" FontSize="13" Foreground="#333" TextWrapping="Wrap" /><TextBlock Text="{Binding StartPreflightDetailText}" FontSize="12" Foreground="#666" Margin="0,6,0,0" /></StackPanel>
+                </Border>
+            </Border>
         </Grid>
 
-        <Border x:Name="SupportProgressCard"
-                Grid.RowSpan="4"
-                Width="420"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Bottom"
-                Margin="0,0,0,48"
-                Padding="14,11"
-                Background="#FFFFFF"
-                BorderBrush="#B8D7F0"
-                BorderThickness="1"
-                CornerRadius="8"
-                Visibility="Collapsed"
-                IsHitTestVisible="False"
-                Panel.ZIndex="10">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <Grid>
-                    <TextBlock x:Name="SupportProgressTitle"
-                               Text="正在收集日志和诊断"
-                               FontWeight="Bold"
-                               Foreground="#005A9E" />
-                    <TextBlock x:Name="SupportProgressPercent"
-                               HorizontalAlignment="Right"
-                               Foreground="#666"
-                               Text="0%" />
-                </Grid>
-                <TextBlock x:Name="SupportProgressDetail"
-                           Grid.Row="1"
-                           Margin="0,5,0,8"
-                           Foreground="#666"
-                           Text="正在准备支持包..."
-                           TextTrimming="CharacterEllipsis" />
-                <ProgressBar x:Name="SupportProgressBar"
-                             Grid.Row="2"
-                             Minimum="0"
-                             Maximum="100"
-                             Value="0"
-                             Height="6"
-                             Foreground="#005A9E" />
-            </Grid>
+        <Border Grid.Row="2" Background="#FFFFFF" BorderBrush="#D8DDE6" BorderThickness="1" Padding="10,7">
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Text="{Binding NetworkStatusText}" Foreground="{Binding NetworkStatusSeverity, Converter={StaticResource SeverityToBrush}}" FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,12,0" /><Button Grid.Column="1" Content="{Binding ExitButtonText}" Command="{Binding ExitCommand}" IsEnabled="{Binding IsExitActionEnabled}" MinWidth="150" Height="32" /></Grid>
+        </Border>
+
+        <Border x:Name="SupportProgressCard" Grid.RowSpan="3" Width="420" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,48" Padding="14,11" Background="#FFFFFF" BorderBrush="#B8D7F0" BorderThickness="1" CornerRadius="8" Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="10">
+            <Grid><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions><Grid><TextBlock x:Name="SupportProgressTitle" Text="正在收集日志和诊断" FontWeight="Bold" Foreground="#005A9E" /><TextBlock x:Name="SupportProgressPercent" HorizontalAlignment="Right" Foreground="#666" Text="0%" /></Grid><TextBlock x:Name="SupportProgressDetail" Grid.Row="1" Margin="0,5,0,8" Foreground="#666" Text="正在准备支持包..." TextTrimming="CharacterEllipsis" /><ProgressBar x:Name="SupportProgressBar" Grid.Row="2" Minimum="0" Maximum="100" Value="0" Height="6" Foreground="#005A9E" /></Grid>
         </Border>
     </Grid>
 </Window>

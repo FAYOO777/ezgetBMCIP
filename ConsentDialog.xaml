@@ -12,12 +12,20 @@
                  ResizeMode="NoResize"
                  ShowInTaskbar="False"
                  ExtendsContentIntoTitleBar="True"
-                 WindowBackdropType="Mica"
+                 WindowBackdropType="None"
+                 Background="{DynamicResource ApplicationBackgroundBrush}"
+                 Loaded="Dialog_Loaded"
+                 ContentRendered="Dialog_ContentRendered"
                  PreviewKeyDown="Dialog_PreviewKeyDown">
     <ui:FluentWindow.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <SolidColorBrush x:Key="ConsentAttentionBrush" Color="#D9A441" />
+        <SolidColorBrush x:Key="ConsentImpactBrush" Color="#E07A2D" />
+        <SolidColorBrush x:Key="ConsentSuccessSurfaceBrush" Color="#183B8F5A" />
+        <SolidColorBrush x:Key="ConsentAttentionSurfaceBrush" Color="#20D9A441" />
+        <SolidColorBrush x:Key="ConsentImpactSurfaceBrush" Color="#20E07A2D" />
     </ui:FluentWindow.Resources>
-    <Grid>
+    <Grid Background="{DynamicResource ApplicationBackgroundBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -25,7 +33,15 @@
 
         <ui:TitleBar Grid.Row="0" Title="{Binding Title}" />
 
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+        <Grid Grid.Row="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <ScrollViewer x:Name="ConsentScrollViewer"
+                          Grid.Row="0"
+                          VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="28,18,28,24">
                 <TextBlock Text="{Binding Title}"
                            FontSize="21"
@@ -45,7 +61,7 @@
                         CornerRadius="8"
                         Padding="14"
                         Margin="0,0,0,18"
-                        Visibility="{Binding HasWarning, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        Visibility="{Binding ShowLegacyWarning, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <TextBlock Text="{Binding WarningText}"
                                FontSize="13"
                                FontWeight="SemiBold"
@@ -53,13 +69,213 @@
                                TextWrapping="Wrap" />
                 </Border>
 
-                <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                <StackPanel x:Name="NetworkChangeSummaryPanel"
+                            Visibility="{Binding HasNetworkChangeSummary, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="14"
+                            Margin="0,0,0,12">
+                        <StackPanel>
+                            <TextBlock Text="本次会发生什么"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource BrandPrimaryBrush}"
+                                       Margin="0,0,0,10" />
+                            <ItemsControl ItemsSource="{Binding NetworkChange.ChangeRows}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                             <ColumnDefinition Width="96" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Label}"
+                                                       FontSize="12"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{Binding Value}"
+                                                       FontSize="13"
+                                                       TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <Border x:Name="FirewallNoticeBorder"
+                            Background="{DynamicResource ControlFillColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="14"
+                            Margin="0,0,0,12"
+                            Visibility="{Binding NetworkChange.HasFirewallNotice, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Ellipse x:Name="FirewallNoticeDot"
+                                         Width="7"
+                                         Height="7"
+                                         Margin="2,5,0,0"
+                                         HorizontalAlignment="Left">
+                                    <Ellipse.Style>
+                                        <Style TargetType="Ellipse">
+                                            <Setter Property="Fill" Value="{StaticResource ConsentAttentionBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding NetworkChange.FirewallNotice.Status}" Value="Impact">
+                                                    <Setter Property="Fill" Value="{StaticResource ConsentImpactBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Ellipse.Style>
+                                </Ellipse>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock x:Name="FirewallNoticeTitle"
+                                               Text="{Binding NetworkChange.FirewallNotice.Title}"
+                                               FontSize="13"
+                                               FontWeight="SemiBold">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{StaticResource ConsentAttentionBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding NetworkChange.FirewallNotice.Status}" Value="Impact">
+                                                        <Setter Property="Foreground" Value="{StaticResource ConsentImpactBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding NetworkChange.FirewallNotice.Description}"
+                                               FontSize="12"
+                                               TextWrapping="Wrap"
+                                               Margin="0,4,0,0"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                            </Grid>
+                            <Expander Header="查看防火墙详情"
+                                      FontSize="12"
+                                      Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                      Margin="0,8,0,0">
+                                <TextBlock Text="{Binding NetworkChange.FirewallNotice.Details}"
+                                           FontSize="11"
+                                           TextWrapping="Wrap"
+                                           Margin="0,8,0,0"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            </Expander>
+                        </StackPanel>
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="BorderBrush" Value="{StaticResource ConsentAttentionBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding NetworkChange.FirewallNotice.Status}" Value="Impact">
+                                        <Setter Property="BorderBrush" Value="{StaticResource ConsentImpactBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                    </Border>
+
+                    <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="14"
+                            Margin="0,0,0,18">
+                        <StackPanel>
+                            <TextBlock Text="退出后如何恢复"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource BrandPrimaryBrush}"
+                                       Margin="0,0,0,10" />
+                            <ItemsControl ItemsSource="{Binding NetworkChange.RestoreSummary}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,0,0,7">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="12" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Ellipse Width="5"
+                                                     Height="5"
+                                                     Margin="2,6,0,0"
+                                                     HorizontalAlignment="Left"
+                                                     Fill="{StaticResource BrandPrimaryBrush}" />
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{Binding}"
+                                                       FontSize="12"
+                                                       TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Expander Header="查看恢复详情"
+                                      FontSize="12"
+                                      Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                      Margin="0,2,0,0">
+                                <TextBlock Text="{Binding NetworkChange.RestoreDetails}"
+                                           FontSize="11"
+                                           TextWrapping="Wrap"
+                                           Margin="0,8,0,0"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            </Expander>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <Border x:Name="GenericItemsBorder"
+                        Background="{DynamicResource ControlFillColorDefaultBrush}"
                         BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1"
                         CornerRadius="8"
                         Padding="16"
-                        Margin="0,0,0,18">
-                    <ItemsControl ItemsSource="{Binding Items}">
+                        Margin="0,0,0,18"
+                        Visibility="{Binding HasNetworkChangeSummary, Converter={StaticResource BoolToVisInv}}">
+                    <StackPanel>
+                        <ItemsControl ItemsSource="{Binding Sections}"
+                                      Visibility="{Binding HasSections, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,0,0,12">
+                                        <TextBlock Text="{Binding Header}"
+                                                   FontSize="13"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{StaticResource BrandPrimaryBrush}"
+                                                   Margin="0,0,0,7" />
+                                        <ItemsControl ItemsSource="{Binding Items}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="0,0,0,9">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="18" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="•"
+                                                                   FontSize="16"
+                                                                   FontWeight="Bold"
+                                                                   Foreground="{StaticResource BrandPrimaryBrush}" />
+                                                        <TextBlock Grid.Column="1"
+                                                                   Text="{Binding}"
+                                                                   FontSize="13"
+                                                                   TextWrapping="Wrap"
+                                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <ItemsControl ItemsSource="{Binding Items}"
+                                      Visibility="{Binding HasSections, Converter={StaticResource BoolToVisInv}}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <Grid Margin="0,0,0,10">
@@ -79,9 +295,12 @@
                                 </Grid>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                        </ItemsControl>
+                    </StackPanel>
                 </Border>
 
+                <StackPanel x:Name="GenericActionPanel"
+                            Visibility="{Binding HasNetworkChangeSummary, Converter={StaticResource BoolToVisInv}}">
                 <CheckBox x:Name="AcknowledgementCheckBox"
                           Content="{Binding AcknowledgementText}"
                           FontSize="13"
@@ -92,21 +311,77 @@
                           Margin="0,0,0,18" />
 
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <ui:Button Content="取消 / 不同意"
-                               Appearance="Secondary"
-                               Width="118"
+                    <ui:Button x:Name="CancelButton"
+                               Content="取消 / 不同意"
+                               Style="{StaticResource BrandPrimaryButtonStyle}"
+                               MinWidth="118"
                                Height="36"
                                Margin="0,0,10,0"
+                               Visibility="{Binding PreferSafeDefault, Converter={StaticResource BooleanToVisibilityConverter}}"
+                               Click="Cancel_Click" />
+                    <ui:Button x:Name="CancelSecondaryButton"
+                               Content="取消 / 不同意"
+                               Appearance="Secondary"
+                               MinWidth="118"
+                               Height="36"
+                               Margin="0,0,10,0"
+                               Visibility="{Binding PreferSafeDefault, Converter={StaticResource BoolToVisInv}}"
                                Click="Cancel_Click" />
                     <ui:Button x:Name="AgreeButton"
                                Content="{Binding ConfirmButtonText}"
                                Style="{StaticResource BrandPrimaryButtonStyle}"
-                               Width="118"
+                               MinWidth="118"
                                Height="36"
                                IsEnabled="False"
+                               Visibility="{Binding PreferSafeDefault, Converter={StaticResource BoolToVisInv}}"
+                               Click="Agree_Click" />
+                    <ui:Button x:Name="AgreeSecondaryButton"
+                               Content="{Binding ConfirmButtonText}"
+                               Appearance="Secondary"
+                               MinWidth="118"
+                               Height="36"
+                               IsEnabled="False"
+                               Visibility="{Binding PreferSafeDefault, Converter={StaticResource BooleanToVisibilityConverter}}"
                                Click="Agree_Click" />
                 </StackPanel>
+                </StackPanel>
             </StackPanel>
-        </ScrollViewer>
+            </ScrollViewer>
+
+            <Border x:Name="NetworkActionFooter"
+                    Grid.Row="1"
+                    Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="0,1,0,0"
+                    Padding="28,12,28,16"
+                    Visibility="{Binding HasNetworkChangeSummary, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel>
+                    <CheckBox x:Name="NetworkAcknowledgementCheckBox"
+                              Content="{Binding AcknowledgementText}"
+                              FontSize="13"
+                              FontWeight="SemiBold"
+                              VerticalContentAlignment="Center"
+                              Checked="AcknowledgementChanged"
+                              Unchecked="AcknowledgementChanged"
+                              Margin="0,0,0,12" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <ui:Button x:Name="NetworkCancelButton"
+                                   Content="取消 / 不同意"
+                                   Style="{StaticResource BrandPrimaryButtonStyle}"
+                                   MinWidth="118"
+                                   Height="36"
+                                   Margin="0,0,10,0"
+                                   Click="Cancel_Click" />
+                        <ui:Button x:Name="NetworkAgreeButton"
+                                   Content="{Binding ConfirmButtonText}"
+                                   Appearance="Secondary"
+                                   MinWidth="118"
+                                   Height="36"
+                                   IsEnabled="False"
+                                   Click="Agree_Click" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </ui:FluentWindow>

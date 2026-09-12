@@ -7,10 +7,19 @@
         Width="700" Height="660" MinWidth="700" MinHeight="580"
         WindowStartupLocation="CenterScreen"
         ExtendsContentIntoTitleBar="True"
-        WindowBackdropType="Mica"
+        WindowBackdropType="None"
+        Background="{DynamicResource ApplicationBackgroundBrush}"
         PreviewKeyDown="Window_PreviewKeyDown">
 
-    <Grid>
+    <ui:FluentWindow.Resources>
+        <local:SessionPageKindToVisibilityConverter x:Key="PageToVis" />
+        <local:PresentationSeverityToBrushConverter x:Key="SeverityToBrush" />
+        <local:ModernStageStateToBrushConverter x:Key="ModernStageBrush" />
+        <local:ModernActionToVisibilityConverter x:Key="ModernActionToVis" />
+        <SolidColorBrush x:Key="PreflightScrimBrush" Color="#66000000" />
+    </ui:FluentWindow.Resources>
+
+    <Grid Background="{DynamicResource ApplicationBackgroundBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -26,11 +35,446 @@
         </ui:TitleBar>
 
         <!-- ═══════════════ Content ═══════════════ -->
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+        <ScrollViewer x:Name="ContentScroller"
+                      Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto"
+                      FocusVisualStyle="{x:Null}">
             <StackPanel Margin="32,22,32,22">
+                <!-- Compatibility container for the pre-modern terminal cards. It is
+                     hidden as soon as the unified formal runtime host is active. -->
+                <StackPanel x:Name="LegacySessionPages"
+                            Visibility="{Binding ShowLegacySessionPages, Converter={StaticResource BoolToVis}}">
+                <!-- ── Terminal result pages: selected only by CurrentSessionPage ── -->
+                <Border x:Name="RestoreFailedPage" Style="{StaticResource CardBorderStyle}" Padding="26,22"
+                        BorderBrush="{StaticResource BrandCriticalBrush}" BorderThickness="1"
+                        Visibility="{Binding CurrentSessionPage, Converter={StaticResource PageToVis}, ConverterParameter=RestoreFailed}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding SessionPageTitle}" FontSize="23" FontWeight="Bold"
+                                   Foreground="{StaticResource BrandCriticalBrush}" Margin="0,0,0,8" />
+                        <TextBlock FontSize="14" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,14">
+                            <Run Text="工具无法确认“" />
+                            <Run Text="{Binding RecoveryAdapterDisplayName, Mode=OneWay}" FontWeight="SemiBold" />
+                            <Run Text="”已恢复到使用前配置。" />
+                        </TextBlock>
+
+                        <Border Background="#FDF2F2" BorderBrush="#E7B2B0" BorderThickness="1"
+                                CornerRadius="6" Padding="14,11" Margin="0,0,0,16">
+                            <TextBlock Text="该网卡可能仍在临时配置下，原有网络连接可能尚未恢复。"
+                                       FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap"
+                                       Foreground="{StaticResource BrandCriticalBrush}" />
+                        </Border>
+
+                        <ui:Button Content="导出支持包"
+                                   Click="CollectSupportBundle_Click"
+                                   Appearance="Secondary"
+                                   Height="40" Padding="18,0" Margin="0,0,0,12" />
+
+                        <Expander Header="查看详情" FontSize="13">
+                            <StackPanel Margin="0,10,0,0">
+                                <TextBlock Text="{Binding FailureSummary}" FontSize="12" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Text="{Binding FailureTechnicalDetail}" FontSize="12" TextWrapping="Wrap"
+                                           Margin="0,8,0,0"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           Visibility="{Binding HasFailureTechnicalDetail, Converter={StaticResource BoolToVis}}" />
+                                <TextBlock Text="恢复记录会保留；后续启动工具时会再次尝试处理。"
+                                           FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                        </Expander>
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="EndpointReachablePage" Style="{StaticResource CardBorderStyle}" Padding="26,22"
+                        BorderBrush="{StaticResource BrandSuccessBrush}" BorderThickness="1"
+                        Visibility="{Binding CurrentSessionPage, Converter={StaticResource PageToVis}, ConverterParameter=EndpointReachable}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding SessionPageTitle}" FontSize="23" FontWeight="Bold"
+                                   Foreground="{StaticResource BrandSuccessBrush}" Margin="0,0,0,7" />
+                        <TextBlock Text="{Binding SessionPageSummary}" FontSize="14" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,16" />
+
+                        <Border Background="#F4FAF6" BorderBrush="#B8D8C2" BorderThickness="1"
+                                CornerRadius="6" Padding="16,13" Margin="0,0,0,13">
+                            <StackPanel>
+                                <TextBlock Text="{Binding DiscoveredIpUrl}" FontSize="24" FontWeight="Bold"
+                                           FontFamily="Consolas, Courier New" TextWrapping="Wrap"
+                                           Foreground="{StaticResource BrandPrimaryBrush}" />
+                                <TextBlock Margin="0,10,0,0" FontSize="13"
+                                           Foreground="#1F2937">
+                                    <Run Text="IP：" />
+                                    <Run Text="{Binding DiscoveredIp, Mode=OneWay}" FontFamily="Consolas, Courier New" />
+                                </TextBlock>
+                                <TextBlock Margin="0,4,0,0" FontSize="13"
+                                           Foreground="#1F2937">
+                                     <Run Text="TCP 端口：" />
+                                    <Run Text="{Binding EndpointProtocolPortText, Mode=OneWay}" />
+                                </TextBlock>
+                                <TextBlock Text="{Binding EndpointVerificationText}" Margin="0,4,0,0" FontSize="13"
+                                           Foreground="#4B5563" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding CandidateSourceText}" Margin="0,4,0,0" FontSize="13"
+                                           Foreground="#4B5563" />
+                            </StackPanel>
+                        </Border>
+
+                        <WrapPanel Margin="0,0,0,14">
+                            <ui:Button Content="打开管理页面"
+                                       Command="{Binding OpenManagementPageCommand}"
+                                       Style="{StaticResource BrandPrimaryButtonStyle}"
+                                       Height="40" Padding="18,0" Margin="0,0,10,8" />
+                            <ui:Button Content="{Binding CopyButtonText}"
+                                       Command="{Binding CopyIpCommand}"
+                                       Appearance="Secondary"
+                                       Height="40" Padding="16,0" Margin="0,0,10,8" />
+                            <ui:Button Content="打开 HTTPS" Command="{Binding OpenHttpsCommand}"
+                                       Appearance="Secondary" Height="40" Padding="16,0" Margin="0,0,10,8" />
+                            <ui:Button Content="打开 HTTP" Command="{Binding OpenHttpCommand}"
+                                       Appearance="Secondary" Height="40" Padding="16,0" Margin="0,0,10,8" />
+                            <ui:Button Content="重新检测" Command="{Binding RetryEndpointCommand}"
+                                       Appearance="Secondary" Height="40" Padding="16,0" Margin="0,0,10,8" />
+                        </WrapPanel>
+
+                        <TextBlock Text="{Binding BrowserStatusText}" FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{Binding BrowserStatusSeverity, Converter={StaticResource SeverityToBrush}}"
+                                   Margin="0,0,0,14" />
+
+                        <Border Background="#FFF7E6" BorderBrush="#E4C07A" BorderThickness="1"
+                                CornerRadius="6" Padding="13,10" Margin="0,0,0,14"
+                                Visibility="{Binding HasEndpointNetworkWarning, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="{Binding EndpointNetworkWarning}" FontSize="12" TextWrapping="Wrap"
+                                       Foreground="#4A3410" />
+                        </Border>
+
+                        <Border Background="#FFF7E6" BorderBrush="#E4C07A" BorderThickness="1"
+                                CornerRadius="6" Padding="13,10">
+                            <TextBlock Text="完成浏览器中的管理操作前，请不要恢复网卡。恢复原配置后，当前管理地址可能无法继续从本机访问。"
+                                       FontSize="12" TextWrapping="Wrap"
+                                       Foreground="#4A3410" />
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="EndpointUnreachablePage" Style="{StaticResource CardBorderStyle}" Padding="26,22"
+                        BorderBrush="#D9A441" BorderThickness="1"
+                        Visibility="{Binding CurrentSessionPage, Converter={StaticResource PageToVis}, ConverterParameter=EndpointUnreachable}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding SessionPageTitle}" FontSize="23" FontWeight="Bold"
+                                   Foreground="#8A5A00" Margin="0,0,0,7" />
+                        <TextBlock Text="{Binding SessionPageSummary}" FontSize="14" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,16" />
+
+                        <Border Background="#FFF9EB" BorderBrush="#E4C07A" BorderThickness="1"
+                                CornerRadius="6" Padding="16,13" Margin="0,0,0,14">
+                            <StackPanel>
+                                <TextBlock Text="{Binding DiscoveredIp}" FontSize="25" FontWeight="Bold"
+                                           FontFamily="Consolas, Courier New"
+                                           Foreground="#1F2937" />
+                                <TextBlock Text="{Binding CandidateSourceText}" Margin="0,7,0,0" FontSize="13"
+                                           Foreground="#4B5563" />
+                                <TextBlock Text="{Binding EndpointVerificationText}" Margin="0,7,0,0" FontSize="13"
+                                           Foreground="#8A5A00" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <WrapPanel Margin="0,0,0,12">
+                            <ui:Button Content="重新检测" Command="{Binding RetryEndpointCommand}"
+                                       Style="{StaticResource BrandPrimaryButtonStyle}"
+                                       Height="40" Padding="18,0" Margin="0,0,10,8" />
+                            <ui:Button Content="{Binding CopyButtonText}" Command="{Binding CopyIpCommand}"
+                                       Appearance="Secondary" Height="40" Padding="16,0" Margin="0,0,10,8" />
+                            <ui:Button Content="打开 HTTPS" Command="{Binding OpenHttpsCommand}"
+                                       Appearance="Secondary" Height="40" Padding="16,0" Margin="0,0,10,8" />
+                            <ui:Button Content="打开 HTTP" Command="{Binding OpenHttpCommand}"
+                                       Appearance="Secondary" Height="40" Padding="16,0" Margin="0,0,10,8" />
+                        </WrapPanel>
+
+                        <Expander Header="查看详情" FontSize="13">
+                             <TextBlock Text="已保留候选地址并完成 Ping/TCP 80/443 可达性检测；网页内容、状态码和非常用端口不在本次自动检测范围内。"
+                                       FontSize="12" TextWrapping="Wrap" Margin="0,10,0,0"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        </Expander>
+                    </StackPanel>
+                </Border>
+
+                <!-- ── Waiting / failure / recovery pages: selected only by CurrentSessionPage ── -->
+                <Border x:Name="WaitingForLinkPage" Style="{StaticResource CardBorderStyle}" Padding="26,22"
+                        Visibility="{Binding CurrentSessionPage, Converter={StaticResource PageToVis}, ConverterParameter=WaitingForLink}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding SessionPageTitle}" FontSize="23" FontWeight="Bold"
+                                   Foreground="{StaticResource BrandPrimaryBrush}" Margin="0,0,0,7" />
+                        <TextBlock Text="{Binding SessionPageSummary}" FontSize="14" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,16" />
+
+                        <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                CornerRadius="6" Padding="15,12" Margin="0,0,0,14">
+                            <StackPanel>
+                                <TextBlock FontSize="13" Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                                    <Run Text="所选网卡：" />
+                                    <Run Text="{Binding CurrentAdapterName, Mode=OneWay}" FontWeight="SemiBold" />
+                                </TextBlock>
+                                <TextBlock Margin="0,8,0,0" FontSize="13" FontWeight="SemiBold"
+                                           Text="{Binding LinkStatusText}"
+                                           Foreground="{StaticResource BrandPrimaryBrush}" />
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="请将此网卡连接到服务器的独立管理口。检测到物理连接后将自动继续。"
+                                   FontSize="13" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <Border Background="#FFF9EB" BorderBrush="#E4C07A" BorderThickness="1"
+                                CornerRadius="6" Padding="13,10" Margin="0,14,0,0"
+                                Visibility="{Binding ShowLongLinkWaitHint, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="仍未检测到连接，请确认网线和管理口连接正常。"
+                                       FontSize="12" TextWrapping="Wrap" Foreground="#4A3410" />
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="WaitingForDhcpPage" Style="{StaticResource CardBorderStyle}" Padding="26,22"
+                        Visibility="{Binding CurrentSessionPage, Converter={StaticResource PageToVis}, ConverterParameter=WaitingForDhcp}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding SessionPageTitle}" FontSize="23" FontWeight="Bold"
+                                   Foreground="{StaticResource BrandPrimaryBrush}" Margin="0,0,0,7" />
+                        <TextBlock Text="{Binding SessionPageSummary}" FontSize="14" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,16" />
+
+                        <Border Background="#F3F7FB" BorderBrush="#B7CBE0" BorderThickness="1"
+                                CornerRadius="6" Padding="16,13" Margin="0,0,0,13">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Row="0" Text="本机临时地址" FontSize="12"
+                                           Foreground="#4B5563" />
+                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SubnetConfig.ServerDisplay, Mode=OneWay}"
+                                           FontSize="13" FontWeight="SemiBold" FontFamily="Consolas, Courier New"
+                                           Foreground="#1F2937" />
+                                <TextBlock Grid.Row="1" Text="预期候选地址" FontSize="12" Margin="0,7,0,0"
+                                           Foreground="#4B5563" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SubnetConfig.PoolDisplay, Mode=OneWay}"
+                                           FontSize="13" FontWeight="SemiBold" FontFamily="Consolas, Courier New"
+                                           Margin="18,7,0,0" Foreground="#1F2937" />
+                                <TextBlock Grid.Row="2" Text="已等待" FontSize="12" Margin="0,7,0,0"
+                                           Foreground="#4B5563" />
+                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding DhcpElapsedText}"
+                                           FontSize="14" FontWeight="SemiBold" FontFamily="Consolas, Courier New"
+                                           Margin="18,7,0,0" Foreground="#1F2937" />
+                                <TextBlock Grid.Row="3" Text="最长等待" FontSize="12" Margin="0,7,0,0"
+                                           Foreground="#4B5563" />
+                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding DhcpMaximumWaitText}"
+                                           FontSize="14" FontWeight="SemiBold" FontFamily="Consolas, Courier New"
+                                           Margin="18,7,0,0" Foreground="#1F2937" />
+                            </Grid>
+                        </Border>
+
+                        <TextBlock Text="{Binding DhcpEvidenceText}" FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{Binding DhcpEvidenceSeverity, Converter={StaticResource SeverityToBrush}}"
+                                   Margin="0,0,0,12" />
+
+                        <Border Background="#FFF9EB" BorderBrush="#E4C07A" BorderThickness="1"
+                                CornerRadius="6" Padding="13,10" Margin="0,0,0,10"
+                                Visibility="{Binding ShowLongDhcpWaitHint, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <TextBlock Text="等待时间较长。" FontSize="12" FontWeight="SemiBold" Foreground="#4A3410" />
+                                <TextBlock Text="• 网线连接的是服务器独立管理口&#x0a;• 管理口当前启用了 DHCP / 自动获取地址"
+                                           FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="#4A3410" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border BorderBrush="{Binding FirewallSeverity, Converter={StaticResource SeverityToBrush}}"
+                                BorderThickness="1" CornerRadius="6" Padding="13,10"
+                                Visibility="{Binding ShowDhcpFirewallEvidence, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <TextBlock Text="{Binding FirewallSummary}" FontSize="12" TextWrapping="Wrap"
+                                           Foreground="{Binding FirewallSeverity, Converter={StaticResource SeverityToBrush}}" />
+                                <Expander Header="查看详情" FontSize="12" Margin="0,8,0,0"
+                                          Visibility="{Binding HasFirewallTechnicalDetail, Converter={StaticResource BoolToVis}}">
+                                    <TextBox Text="{Binding FirewallTechnicalDetail, Mode=OneWay}" IsReadOnly="True" BorderThickness="0"
+                                             Background="Transparent" FontFamily="Consolas, Courier New" FontSize="11"
+                                             TextWrapping="Wrap" AcceptsReturn="True" MaxHeight="140"
+                                             VerticalScrollBarVisibility="Auto" />
+                                </Expander>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="ProbingEndpointPage" Style="{StaticResource CardBorderStyle}" Padding="26,22"
+                        Visibility="{Binding CurrentSessionPage, Converter={StaticResource PageToVis}, ConverterParameter=ProbingEndpoint}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding SessionPageTitle}" FontSize="23" FontWeight="Bold"
+                                   Foreground="{StaticResource BrandPrimaryBrush}" Margin="0,0,0,7" />
+                        <TextBlock Text="{Binding SessionPageSummary}" FontSize="14" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,16" />
+
+                        <Border Background="#F3F7FB" BorderBrush="#B7CBE0" BorderThickness="1"
+                                CornerRadius="6" Padding="16,13" Margin="0,0,0,13">
+                            <StackPanel>
+                                <TextBlock Text="候选管理地址" FontSize="12" Foreground="#4B5563" />
+                                <TextBlock Text="{Binding DiscoveredIp}" FontSize="25" FontWeight="Bold"
+                                           FontFamily="Consolas, Courier New" Foreground="#1F2937" Margin="0,4,0,0" />
+                                <TextBlock Text="{Binding CandidateSourceText}" FontSize="12" Foreground="#4B5563" Margin="0,6,0,0" />
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Text="正在检查：Ping    TCP · 443    TCP · 80"
+                                   FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource BrandPrimaryBrush}" />
+                        <TextBlock Text="已取得候选地址，正在确认地址可达性。"
+                                   FontSize="12" TextWrapping="Wrap" Margin="0,7,0,0"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="DhcpTimedOutPage" Style="{StaticResource CardBorderStyle}" Padding="26,22"
+                        BorderBrush="#D9A441" BorderThickness="1"
+                        Visibility="{Binding CurrentSessionPage, Converter={StaticResource PageToVis}, ConverterParameter=DhcpTimedOut}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding SessionPageTitle}" FontSize="23" FontWeight="Bold"
+                                   Foreground="#8A5A00" Margin="0,0,0,7" />
+                        <TextBlock Text="{Binding SessionPageSummary}" FontSize="14" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,16" />
+
+                        <Border Background="#FFF9EB" BorderBrush="#E4C07A" BorderThickness="1"
+                                CornerRadius="6" Padding="14,12" Margin="0,0,0,13">
+                            <StackPanel>
+                                <TextBlock FontSize="12" Foreground="#4A3410">
+                                    <Run Text="当前网卡：" /><Run Text="{Binding CurrentAdapterName, Mode=OneWay}" FontWeight="SemiBold" />
+                                </TextBlock>
+                                <TextBlock FontSize="12" Margin="0,6,0,0" Foreground="#4A3410">
+                                    <Run Text="临时本机地址：" /><Run Text="{Binding SubnetConfig.ServerDisplay, Mode=OneWay}" FontFamily="Consolas, Courier New" />
+                                </TextBlock>
+                                <TextBlock FontSize="12" Margin="0,6,0,0" Foreground="#4A3410">
+                                    <Run Text="等待时间：" /><Run Text="{Binding DhcpElapsedText, Mode=OneWay}" FontFamily="Consolas, Courier New" />
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
+                        <Border BorderBrush="{Binding FirewallSeverity, Converter={StaticResource SeverityToBrush}}"
+                                BorderThickness="1" CornerRadius="6" Padding="13,10" Margin="0,0,0,12"
+                                Visibility="{Binding HasFirewallAssessment, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="{Binding FirewallSummary}" FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{Binding FirewallSeverity, Converter={StaticResource SeverityToBrush}}" />
+                        </Border>
+                        <TextBlock Text="{Binding DhcpTimeoutFollowUpText}" FontSize="13" FontWeight="SemiBold"
+                                   TextWrapping="Wrap" Margin="0,0,0,12"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   Visibility="{Binding HasDhcpTimeoutFollowUp, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Text="检查当前连接与管理口网络设置；无需在此页再次等待 3 分钟。"
+                                   FontSize="13" TextWrapping="Wrap" Margin="0,0,0,12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+
+                        <WrapPanel Margin="0,0,0,10">
+                            <ui:Button Content="导出支持包" Click="CollectSupportBundle_Click"
+                                       Style="{StaticResource BrandPrimaryButtonStyle}"
+                                       Height="40" Padding="18,0" />
+                        </WrapPanel>
+                        <Expander Header="查看详情" FontSize="13">
+                            <StackPanel Margin="0,10,0,0">
+                                <TextBlock Text="{Binding FailureTechnicalDetail}" FontSize="12" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           Visibility="{Binding HasFailureTechnicalDetail, Converter={StaticResource BoolToVis}}" />
+                                <TextBox Text="{Binding FirewallTechnicalDetail, Mode=OneWay}" IsReadOnly="True" BorderThickness="0"
+                                         Background="Transparent" FontFamily="Consolas, Courier New" FontSize="11"
+                                         TextWrapping="Wrap" AcceptsReturn="True" MaxHeight="140" Margin="0,8,0,0"
+                                         VerticalScrollBarVisibility="Auto"
+                                         Visibility="{Binding HasFirewallTechnicalDetail, Converter={StaticResource BoolToVis}}" />
+                            </StackPanel>
+                        </Expander>
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="FailurePage" Style="{StaticResource CardBorderStyle}" Padding="26,22"
+                        BorderBrush="{StaticResource BrandCriticalBrush}" BorderThickness="1"
+                        Visibility="{Binding CurrentSessionPage, Converter={StaticResource PageToVis}, ConverterParameter=Failure}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding FailureTitle}" FontSize="23" FontWeight="Bold"
+                                   Foreground="{StaticResource BrandCriticalBrush}" Margin="0,0,0,7" />
+                        <TextBlock Text="{Binding FailureSummary}" FontSize="14" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,14" />
+
+                        <Border Background="#FDF2F2" BorderBrush="#E7B2B0" BorderThickness="1"
+                                CornerRadius="6" Padding="13,10" Margin="0,0,0,12">
+                            <TextBlock Text="{Binding FailureNetworkImpactText}" FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{StaticResource BrandCriticalBrush}" />
+                        </Border>
+                        <TextBlock Text="推荐下一步" FontSize="12" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Text="{Binding FailureRecommendedActionText}" FontSize="13" TextWrapping="Wrap"
+                                   Margin="0,4,0,14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+
+                        <WrapPanel Margin="0,0,0,10">
+                             <ui:Button Content="重新检测地址" Command="{Binding RetryEndpointCommand}"
+                                       Style="{StaticResource BrandPrimaryButtonStyle}"
+                                       Height="40" Padding="18,0" Margin="0,0,10,8"
+                                       Visibility="{Binding CanRetryEndpointFromFailure, Converter={StaticResource BoolToVis}}" />
+                            <ui:Button Content="导出支持包" Click="CollectSupportBundle_Click"
+                                       Appearance="Secondary" Height="40" Padding="18,0" Margin="0,0,10,8" />
+                        </WrapPanel>
+
+                        <Expander Header="查看详情" FontSize="13">
+                            <StackPanel Margin="0,10,0,0">
+                                <TextBlock Text="{Binding FailureTechnicalDetail}" FontSize="12" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           Visibility="{Binding HasFailureTechnicalDetail, Converter={StaticResource BoolToVis}}" />
+                                <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                                    <Run Text="当前网卡：" /><Run Text="{Binding CurrentAdapterName, Mode=OneWay}" />
+                                    <LineBreak />
+                                    <Run Text="临时本机地址：" /><Run Text="{Binding SubnetConfig.ServerDisplay, Mode=OneWay}" />
+                                </TextBlock>
+                                <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           Visibility="{Binding IsIpDiscovered, Converter={StaticResource BoolToVis}}">
+                                    <Run Text="候选地址：" /><Run Text="{Binding DiscoveredIp, Mode=OneWay}" />
+                                    <LineBreak />
+                                    <Run Text="{Binding CandidateSourceText, Mode=OneWay}" />
+                                </TextBlock>
+                                <TextBlock Text="{Binding FirewallSummary}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"
+                                           Foreground="{Binding FirewallSeverity, Converter={StaticResource SeverityToBrush}}"
+                                           Visibility="{Binding HasFirewallAssessment, Converter={StaticResource BoolToVis}}" />
+                                <TextBox Text="{Binding FirewallTechnicalDetail, Mode=OneWay}" IsReadOnly="True" BorderThickness="0"
+                                         Background="Transparent" FontFamily="Consolas, Courier New" FontSize="11"
+                                         TextWrapping="Wrap" AcceptsReturn="True" MaxHeight="140" Margin="0,8,0,0"
+                                         VerticalScrollBarVisibility="Auto"
+                                         Visibility="{Binding HasFirewallTechnicalDetail, Converter={StaticResource BoolToVis}}" />
+                            </StackPanel>
+                        </Expander>
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="CancelledPage" Style="{StaticResource CardBorderStyle}" Padding="26,22"
+                        Visibility="{Binding CurrentSessionPage, Converter={StaticResource PageToVis}, ConverterParameter=Cancelled}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding SessionPageTitle}" FontSize="21" FontWeight="Bold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,7" />
+                        <TextBlock Text="{Binding SessionPageSummary}" FontSize="14" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="RestoringPage" Style="{StaticResource CardBorderStyle}" Padding="26,22"
+                        Visibility="{Binding CurrentSessionPage, Converter={StaticResource PageToVis}, ConverterParameter=Restoring}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding SessionPageTitle}" FontSize="21" FontWeight="Bold"
+                                   Foreground="{StaticResource BrandPrimaryBrush}" Margin="0,0,0,7" />
+                        <TextBlock FontSize="14" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+                            <Run Text="正在恢复“" /><Run Text="{Binding RecoveryAdapterDisplayName, Mode=OneWay}" FontWeight="SemiBold" />
+                            <Run Text="”使用工具前的网络配置。请等待完成。" />
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
+                </StackPanel>
 
                 <!-- ── Preparation card ── -->
-                <StackPanel Visibility="{Binding AppPhase, Converter={StaticResource PhaseToVis}, ConverterParameter=Preparation}">
+                <StackPanel Visibility="{Binding ShowPreparationContent, Converter={StaticResource BoolToVis}}">
                     <Border Style="{StaticResource CardBorderStyle}" Padding="24,18">
                         <StackPanel>
                             <TextBlock Text="{Binding StatusText}" FontSize="24"
@@ -70,7 +514,7 @@
                                        Content="下一步"
                                        Command="{Binding GoNextCommand}"
                                        Style="{StaticResource BrandPrimaryButtonStyle}"
-                                       Width="132" Height="40"
+                                       MinWidth="132" Height="40"
                                        VerticalAlignment="Center" />
                         </Grid>
                     </Border>
@@ -78,7 +522,7 @@
 
                 <!-- ── Hero card (AdapterSelection + FlowRunning) ── -->
                 <Border Style="{StaticResource CardBorderStyle}" Padding="24,18"
-                        Visibility="{Binding IsAdapterVisible, Converter={StaticResource BoolToVis}}">
+                        Visibility="{Binding ShowRuntimeHero, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
                         <TextBlock Text="{Binding StatusText}" FontSize="23"
                                    FontWeight="Bold"
@@ -91,7 +535,7 @@
 
                 <!-- ── Adapter selector card ── -->
                 <Border Style="{StaticResource CardBorderStyle}" Padding="18,16"
-                        Visibility="{Binding IsAdapterVisible, Converter={StaticResource BoolToVis}}">
+                        Visibility="{Binding AppPhase, Converter={StaticResource PhaseToVis}, ConverterParameter=AdapterSelection}">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -143,9 +587,45 @@
                                 Command="{Binding StartCommand}"
                                 Style="{StaticResource BrandPrimaryButtonStyle}"
                                 IsEnabled="{Binding StartButtonEnabled}"
-                                Width="96" Height="38" Margin="14,0,0,0"
+                                MinWidth="96" Height="38" Margin="14,0,0,0"
                                 VerticalAlignment="Center"
                                 Visibility="{Binding AppPhase, Converter={StaticResource PhaseToVis}, ConverterParameter=AdapterSelection}" />
+
+                        <Border Grid.Row="2" Grid.ColumnSpan="3"
+                                Margin="0,12,0,0"
+                                Padding="12,9"
+                                CornerRadius="6"
+                                Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                BorderBrush="{Binding AdapterFirewallNoticeSeverity, Converter={StaticResource SeverityToBrush}}"
+                                BorderThickness="1"
+                                Visibility="{Binding ShowAdapterFirewallNotice, Converter={StaticResource BoolToVis}}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Ellipse Width="8" Height="8" Margin="0,4,10,0"
+                                         VerticalAlignment="Top"
+                                         Fill="{Binding AdapterFirewallNoticeSeverity, Converter={StaticResource SeverityToBrush}}" />
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="{Binding AdapterFirewallNoticeTitle}"
+                                               FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{Binding AdapterFirewallNoticeSeverity, Converter={StaticResource SeverityToBrush}}" />
+                                    <TextBlock Text="{Binding FirewallRepairFeedback}"
+                                               FontSize="12" TextWrapping="Wrap" Margin="0,3,12,0"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                                <ui:Button Grid.Column="2"
+                                           Content="重新处理"
+                                           Command="{Binding RepairFirewallCommand}"
+                                           IsEnabled="{Binding FirewallRepairEnabled}"
+                                           Appearance="Secondary"
+                                           MinWidth="88" Height="32"
+                                           VerticalAlignment="Center"
+                                           Visibility="{Binding ShowAdapterFirewallRetry, Converter={StaticResource BoolToVis}}" />
+                            </Grid>
+                        </Border>
 
                         <!-- ── Running state: after flow starts ── -->
                         <StackPanel Grid.Row="1" Grid.ColumnSpan="3"
@@ -193,7 +673,7 @@
                                        Content="{Binding AdvancedSubnetToggleText}"
                                        Command="{Binding ToggleAdvancedSubnetCommand}"
                                        Appearance="Secondary"
-                                       Width="72" Height="32"
+                                       MinWidth="72" Height="32"
                                        VerticalAlignment="Center"
                                        Margin="18,0,0,0" />
                         </Grid>
@@ -269,9 +749,197 @@
                     </StackPanel>
                 </Border>
 
+                <!-- ── Unified formal runtime surface ── -->
+                <Border x:Name="ModernRuntimeHost"
+                        Style="{StaticResource CardBorderStyle}"
+                        Padding="0"
+                        Visibility="{Binding ShowModernRuntimeHost, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <!-- A light navigation guide: it describes the discovery goal,
+                             while restoration remains the fixed safety action below. -->
+                        <Border x:Name="ModernStageRail"
+                                Padding="20,14"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="0,0,0,1"
+                                Visibility="{Binding ModernRuntime.ShowStageRail, Converter={StaticResource BoolToVis}}">
+                            <ItemsControl ItemsSource="{Binding ModernRuntime.Stages}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <UniformGrid Rows="1" Columns="3" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                <Ellipse Width="10" Height="10" Margin="0,0,6,0"
+                                                         Fill="{Binding State, Converter={StaticResource ModernStageBrush}}"
+                                                         VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding Label}" FontSize="12"
+                                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding StateText}" FontSize="10"
+                                                       HorizontalAlignment="Center" Margin="0,3,0,0"
+                                                       Foreground="{Binding State, Converter={StaticResource ModernStageBrush}}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Border>
+
+                        <Border x:Name="ModernSessionCard"
+                                Padding="24,22"
+                                Background="{DynamicResource ControlFillColorDefaultBrush}">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="42" Height="42" CornerRadius="21"
+                                            Background="{Binding ModernRuntime.Severity, Converter={StaticResource SeverityToBrush}}"
+                                            VerticalAlignment="Top" Margin="0,0,14,0">
+                                        <TextBlock Text="{Binding ModernRuntime.StatusGlyph}"
+                                                   Foreground="White" FontSize="22" FontWeight="Bold"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="{Binding ModernRuntime.Title}" FontSize="23"
+                                                   FontWeight="Bold" TextWrapping="Wrap"
+                                                   Foreground="{Binding ModernRuntime.Severity, Converter={StaticResource SeverityToBrush}}" />
+                                        <TextBlock Text="{Binding ModernRuntime.Summary}" FontSize="14"
+                                                   TextWrapping="Wrap" Margin="0,6,0,0"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <Border Margin="0,18,0,0" Padding="14,11"
+                                        CornerRadius="6"
+                                        Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+                                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        Visibility="{Binding ModernRuntime.HasPrimaryValue, Converter={StaticResource BoolToVis}}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding ModernRuntime.PrimaryValueLabel}"
+                                                   FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                   VerticalAlignment="Center" Margin="0,0,18,0" />
+                                        <TextBlock Grid.Column="1" Text="{Binding ModernRuntime.PrimaryValue}"
+                                                   FontSize="18" FontWeight="SemiBold" FontFamily="Consolas, Courier New"
+                                                   TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                    </Grid>
+                                </Border>
+
+                                <StackPanel Margin="0,16,0,0"
+                                            Visibility="{Binding ModernRuntime.ShowProgressRing, Converter={StaticResource BoolToVis}}">
+                                    <ui:ProgressRing Width="28" Height="28" IsIndeterminate="True"
+                                                     Foreground="{StaticResource BrandPrimaryBrush}"
+                                                     HorizontalAlignment="Left" />
+                                    <TextBlock Text="{Binding ModernRuntime.ProgressText}" FontSize="13"
+                                               TextWrapping="Wrap" Margin="0,8,0,0"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+
+                                <ItemsControl ItemsSource="{Binding ModernRuntime.Facts}" Margin="0,16,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,0,0,7">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Label}" FontSize="12"
+                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                           Margin="0,0,18,0" />
+                                                <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="13"
+                                                           TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <Border Margin="0,8,0,0" Padding="12,10" CornerRadius="6"
+                                        Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                        BorderBrush="{Binding ModernRuntime.NoticeSeverity, Converter={StaticResource SeverityToBrush}}"
+                                        BorderThickness="1"
+                                        Visibility="{Binding ModernRuntime.HasNotice, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="{Binding ModernRuntime.NoticeText}" FontSize="12"
+                                               TextWrapping="Wrap"
+                                               Foreground="{Binding ModernRuntime.NoticeSeverity, Converter={StaticResource SeverityToBrush}}" />
+                                </Border>
+
+                                <WrapPanel Margin="0,16,0,0">
+                                    <ui:Button Content="打开管理页面" Command="{Binding OpenManagementPageCommand}"
+                                               Style="{StaticResource BrandPrimaryButtonStyle}"
+                                               Height="40" Padding="18,0" Margin="0,0,10,8"
+                                               Visibility="{Binding ModernRuntime.PrimaryAction, Converter={StaticResource ModernActionToVis}, ConverterParameter=OpenManagementPage}" />
+                                    <ui:Button Content="重新检测" Command="{Binding RetryEndpointCommand}"
+                                               Style="{StaticResource BrandPrimaryButtonStyle}"
+                                               Height="40" Padding="18,0" Margin="0,0,10,8"
+                                               Visibility="{Binding ModernRuntime.PrimaryAction, Converter={StaticResource ModernActionToVis}, ConverterParameter=RetryEndpoint}" />
+                                    <ui:Button Content="使用上次网段重试" Command="{Binding PrepareHistoryRetryCommand}"
+                                               Style="{StaticResource BrandPrimaryButtonStyle}"
+                                               Height="40" Padding="18,0" Margin="0,0,10,8"
+                                               Visibility="{Binding ModernRuntime.PrimaryAction, Converter={StaticResource ModernActionToVis}, ConverterParameter=PrepareHistoryRetry}" />
+                                    <ui:Button Content="处理防火墙并准备重试" Command="{Binding RepairFirewallCommand}"
+                                               Style="{StaticResource BrandPrimaryButtonStyle}"
+                                               Height="40" Padding="18,0" Margin="0,0,10,8"
+                                               IsEnabled="{Binding FirewallRepairEnabled}"
+                                               Visibility="{Binding ModernRuntime.PrimaryAction, Converter={StaticResource ModernActionToVis}, ConverterParameter=RepairFirewall}" />
+                                    <ui:Button Content="导出支持包" Click="CollectSupportBundle_Click"
+                                               Style="{StaticResource BrandPrimaryButtonStyle}"
+                                               Height="40" Padding="18,0" Margin="0,0,10,8"
+                                               Visibility="{Binding ModernRuntime.PrimaryAction, Converter={StaticResource ModernActionToVis}, ConverterParameter=ExportSupport}" />
+                                    <ui:Button Content="导出支持包" Click="CollectSupportBundle_Click"
+                                               Appearance="Secondary" Height="40" Padding="18,0" Margin="0,0,10,8"
+                                               Visibility="{Binding ModernRuntime.SecondaryAction, Converter={StaticResource ModernActionToVis}, ConverterParameter=ExportSupport}" />
+                                    <ui:Button Content="复制地址" Command="{Binding CopyIpCommand}"
+                                               Appearance="Secondary" Height="40" Padding="16,0" Margin="0,0,10,8"
+                                               Visibility="{Binding ModernRuntime.SecondaryAction, Converter={StaticResource ModernActionToVis}, ConverterParameter=CopyAddress}" />
+                                </WrapPanel>
+
+                                <Expander Header="其他方式" FontSize="12" Margin="0,2,0,0"
+                                          Visibility="{Binding ModernRuntime.ShowOtherEndpointActions, Converter={StaticResource BoolToVis}}">
+                                    <WrapPanel Margin="0,8,0,0">
+                                        <ui:Button Content="打开 HTTPS" Command="{Binding OpenHttpsCommand}"
+                                                   Appearance="Secondary" Height="36" Padding="14,0" Margin="0,0,8,8" />
+                                        <ui:Button Content="打开 HTTP" Command="{Binding OpenHttpCommand}"
+                                                   Appearance="Secondary" Height="36" Padding="14,0" Margin="0,0,8,8" />
+                                        <ui:Button Content="重新检测" Command="{Binding RetryEndpointCommand}"
+                                                   Appearance="Secondary" Height="36" Padding="14,0" Margin="0,0,8,8"
+                                                   Visibility="{Binding CurrentSessionPage, Converter={StaticResource PageToVis}, ConverterParameter=EndpointReachable}" />
+                                    </WrapPanel>
+                                </Expander>
+
+                                <TextBlock Text="{Binding BrowserStatusText}" FontSize="12" TextWrapping="Wrap"
+                                           Margin="0,2,0,0"
+                                           Foreground="{Binding BrowserStatusSeverity, Converter={StaticResource SeverityToBrush}}"
+                                           Visibility="{Binding CurrentSessionPage, Converter={StaticResource PageToVis}, ConverterParameter=EndpointReachable}" />
+
+                                <TextBlock Text="{Binding FailureRecommendedActionText}" FontSize="13"
+                                           TextWrapping="Wrap" Margin="0,8,0,0"
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                           Visibility="{Binding CurrentSessionPage, Converter={StaticResource PageToVis}, ConverterParameter=Failure}" />
+
+                                <Expander Header="查看诊断详情" FontSize="12" Margin="0,12,0,0"
+                                          Visibility="{Binding ModernRuntime.HasDetails, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="{Binding ModernRuntime.DetailsText}" FontSize="11"
+                                               TextWrapping="Wrap" Margin="0,8,0,0"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                </Expander>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <!-- ── Retired runtime card retained only as a non-rendering compatibility
+                     surface for old bindings and test seams. ── -->
                 <!-- ── Current step card ── -->
                 <Border Style="{StaticResource CardBorderStyle}" Padding="28,20"
-                        Visibility="{Binding AppPhase, Converter={StaticResource PhaseToVis}, ConverterParameter=FlowRunning}">
+                        Visibility="{Binding ShowLegacyRuntimeProgress, Converter={StaticResource BoolToVis}}">
                     <ContentControl Content="{Binding}">
                         <ContentControl.ContentTemplate>
                             <DataTemplate>
@@ -375,61 +1043,69 @@
                     </ContentControl>
                 </Border>
 
-                <!-- ── IP result card ── -->
-                <Border Style="{StaticResource CardBorderStyle}" Padding="28,20"
-                        Visibility="{Binding IsIpCardVisible, Converter={StaticResource BoolToVis}}">
-                    <StackPanel HorizontalAlignment="Center">
-                        <TextBlock Text="已分配 BMC 管理地址" FontSize="15" FontWeight="Bold"
-                                   Foreground="{StaticResource BrandSuccessBrush}"
-                                   HorizontalAlignment="Center" Margin="0,0,0,10" />
-
-                        <!-- Large IP -->
-                        <TextBlock FontSize="28" FontWeight="Bold"
-                                   HorizontalAlignment="Center"
-                                   FontFamily="Consolas, Courier New"
-                                   Margin="0,0,0,6"
-                                   MaxWidth="560"
-                                   TextTrimming="CharacterEllipsis"
-                                   ToolTip="{Binding DiscoveredIpUrl}">
-                            <Hyperlink NavigateUri="{Binding DiscoveredIpUrl, Mode=OneWay}"
-                                       RequestNavigate="BmcUrl_RequestNavigate"
-                                       Foreground="{StaticResource BrandPrimaryBrush}">
-                                <Run Text="{Binding DiscoveredIpUrl, Mode=OneWay}" />
-                            </Hyperlink>
-                        </TextBlock>
-
-                        <TextBlock Text="{Binding EndpointStatusText}"
-                                   FontSize="12"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   HorizontalAlignment="Center" TextAlignment="Center"
-                                   MaxWidth="520" TextWrapping="Wrap"
-                                   Margin="0,0,0,14" />
-
-                        <!-- Copy + protocol-specific actions -->
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                            <ui:Button Content="{Binding CopyButtonText}"
-                                       Command="{Binding CopyIpCommand}"
-                                       Appearance="Secondary"
-                                       Width="104" Height="36" Margin="0,0,8,0" />
-                            <ui:Button Content="打开 HTTPS"
-                                       Command="{Binding OpenHttpsCommand}"
+                <!-- ── Previous BMC subnet suggestion after first DHCP timeout ── -->
+                <Border Style="{StaticResource CardBorderStyle}" Padding="24,18"
+                        BorderBrush="#D9A441" BorderThickness="1"
+                        Visibility="{Binding ShowLegacyRuntimeProgress, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding SessionPageTitle}" FontSize="16" FontWeight="SemiBold"
+                                   Foreground="#8A5A00" Margin="0,0,0,7" />
+                        <TextBlock Text="{Binding SessionPageSummary}" FontSize="13" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,10" />
+                        <TextBlock Text="{Binding HistoryRetrySuggestionText}"
+                                   FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                        <TextBlock Text="这不是当前连接设备身份的证明，也不表示该历史地址仍然可用。"
+                                   FontSize="12" TextWrapping="Wrap" Margin="0,8,0,13"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <Border Background="#FFF9EB" BorderBrush="#E4C07A" BorderThickness="1"
+                                CornerRadius="6" Padding="12,10" Margin="0,0,0,13">
+                            <StackPanel>
+                                <TextBlock FontSize="12" Foreground="#4A3410"><Run Text="本机网卡：" /><Run Text="{Binding HistoryAdapterName, Mode=OneWay}" /></TextBlock>
+                                <TextBlock FontSize="12" Foreground="#4A3410" Margin="0,5,0,0"><Run Text="上次临时地址：" /><Run Text="{Binding HistoryLocalAddress, Mode=OneWay}" FontFamily="Consolas, Courier New" /></TextBlock>
+                                <TextBlock FontSize="12" Foreground="#4A3410" Margin="0,5,0,0"><Run Text="当时管理地址：" /><Run Text="{Binding HistoryBmcAddress, Mode=OneWay}" FontFamily="Consolas, Courier New" /></TextBlock>
+                                <TextBlock FontSize="12" Foreground="#4A3410" Margin="0,5,0,0"><Run Text="上次可达性：" /><Run Text="{Binding HistoryEndpointText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock FontSize="12" Foreground="#4A3410" Margin="0,5,0,0"><Run Text="确认时间：" /><Run Text="{Binding HistoryLastConfirmedText, Mode=OneWay}" /></TextBlock>
+                            </StackPanel>
+                        </Border>
+                        <StackPanel Orientation="Horizontal">
+                            <ui:Button Content="使用上次网段重试"
+                                       Command="{Binding PrepareHistoryRetryCommand}"
                                        Style="{StaticResource BrandPrimaryButtonStyle}"
-                                       Width="112" Height="36" Margin="0,0,8,0" />
-                            <ui:Button Content="打开 HTTP"
-                                       Command="{Binding OpenHttpCommand}"
+                                       Height="36" Padding="16,0" />
+                            <ui:Button Content="导出支持包"
+                                       Click="CollectSupportBundle_Click"
                                        Appearance="Secondary"
-                                       Width="104" Height="36" Margin="0,0,8,0" />
-                            <ui:Button Content="重新检测"
-                                       Command="{Binding RetryEndpointCommand}"
-                                       Appearance="Secondary"
-                                       Width="104" Height="36" />
+                                       Height="36" Padding="16,0" Margin="10,0,0,0" />
                         </StackPanel>
+                        <Expander Header="查看详情" FontSize="12" Margin="0,12,0,0">
+                            <TextBlock Text="选择后会先恢复本机网卡，再填入上次网段；不会自动开始下一轮，也不会修改 BMC。"
+                                       FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        </Expander>
+                    </StackPanel>
+                </Border>
+
+                <!-- ── Support action for failures without a history retry ── -->
+                <Border Style="{StaticResource CardBorderStyle}" Padding="24,18"
+                        Visibility="{Binding ShowLegacySupportBundleCard, Converter={StaticResource BoolToVis}}">
+                    <StackPanel Orientation="Horizontal">
+                        <StackPanel Width="430">
+                            <TextBlock Text="请收集支持包" FontSize="15" FontWeight="SemiBold"
+                                       Foreground="{StaticResource BrandCriticalBrush}" Margin="0,0,0,5" />
+                            <TextBlock Text="支持包会收集本次诊断与应用日志，便于判断 DHCP、网卡和防火墙状态。"
+                                       FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                        <ui:Button Content="导出支持包" Click="CollectSupportBundle_Click"
+                                   Appearance="Secondary" Height="36" MinWidth="112"
+                                   VerticalAlignment="Center" Margin="12,0,0,0" />
                     </StackPanel>
                 </Border>
 
                 <!-- ── Step indicator ── -->
                 <Border Style="{StaticResource CardBorderStyle}" Padding="32,16"
-                        Visibility="{Binding AppPhase, Converter={StaticResource PhaseToVis}, ConverterParameter=FlowRunning}">
+                        Visibility="{Binding ShowLegacyRuntimeProgress, Converter={StaticResource BoolToVis}}">
                     <ItemsControl ItemsSource="{Binding Steps}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -556,26 +1232,91 @@
             </StackPanel>
         </ScrollViewer>
 
+        <!-- A preflight overlay covers only the main content. The footer,
+             including the safe exit action, remains available while the
+             read-only checks are running. -->
+        <Border x:Name="StartPreflightOverlay"
+                Grid.Row="1"
+                Panel.ZIndex="20"
+                Background="{StaticResource PreflightScrimBrush}"
+                Visibility="{Binding ShowStartPreflightOverlay, Converter={StaticResource BoolToVis}}">
+            <Grid>
+                <Border x:Name="StartPreflightCard"
+                        Width="360"
+                        Padding="28,24"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="10">
+                    <StackPanel>
+                        <ui:ProgressRing Width="38"
+                                         Height="38"
+                                         IsIndeterminate="True"
+                                         Foreground="{StaticResource BrandPrimaryBrush}"
+                                         HorizontalAlignment="Center"
+                                         Margin="0,0,0,16" />
+                        <TextBlock Text="{Binding StartPreflightTitle}"
+                                   FontSize="18"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   HorizontalAlignment="Center" />
+                        <TextBlock Text="{Binding StartPreflightStageText}"
+                                   FontSize="13"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   HorizontalAlignment="Center"
+                                   TextAlignment="Center"
+                                   Margin="0,9,0,6" />
+                        <TextBlock Text="{Binding StartPreflightDetailText}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
         <!-- ═══════════════ Footer ═══════════════ -->
         <Border Grid.Row="2"
                 Background="{DynamicResource ControlFillColorDefaultBrush}"
                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                 BorderThickness="0,1,0,0"
                 Padding="24,0">
-            <Grid Height="56">
-                <StackPanel Orientation="Horizontal"
-                            HorizontalAlignment="Left"
-                            VerticalAlignment="Center">
-                    <TextBlock Text="{Binding VersionText}" FontSize="11"
+            <Grid Height="64">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Grid Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Ellipse Grid.Column="0" Width="10" Height="10" Margin="0,0,10,0"
+                             VerticalAlignment="Center"
+                             Fill="{Binding NetworkStatusSeverity, Converter={StaticResource SeverityToBrush}}" />
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="本机网卡状态" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Text="{Binding ModernNetworkStatusText}" FontSize="12" FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"
+                                   Foreground="{Binding NetworkStatusSeverity, Converter={StaticResource SeverityToBrush}}" />
+                    </StackPanel>
+                </Grid>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding VersionText}" FontSize="10"
                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                               VerticalAlignment="Center" />
+                               VerticalAlignment="Center" Margin="0,0,12,0" />
+                    <ui:Button Content="{Binding ExitButtonText}"
+                               Command="{Binding ExitCommand}"
+                               IsEnabled="{Binding IsExitActionEnabled}"
+                               Appearance="Secondary"
+                               MinWidth="142" Height="40" />
                 </StackPanel>
-                <ui:Button Content="{Binding ExitButtonText}"
-                        Command="{Binding ExitCommand}"
-                        IsEnabled="{Binding ExitButtonEnabled}"
-                        Appearance="Secondary"
-                        HorizontalAlignment="Right" VerticalAlignment="Center"
-                        Width="130" Height="40" />
             </Grid>
         </Border>
 
@@ -586,7 +1327,7 @@
                 VerticalAlignment="Bottom"
                 Margin="24,0,24,72"
                 Padding="16,12"
-                Background="{DynamicResource ControlFillColorDefaultBrush}"
+                Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 CornerRadius="8"

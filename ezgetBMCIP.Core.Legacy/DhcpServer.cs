@@ -175,39 +175,32 @@ namespace EzGetBmcIp
                 return;
             }
 
-            var lease = GetOrCreateLease(mac);
-
             if (messageType == 3)
             {
-                var serverOption = GetOption(request, 54);
-                if (serverOption != null && serverOption.Length == 4)
+                var decision = DhcpRequestPolicy.Classify(request, _serverIp, _mask, _poolStart);
+                Logger?.Invoke("DHCP: REQUEST xid=0x" + GetTransactionId(request) +
+                    " mac=" + MacBytesToString(mac) + " " + decision.ToDiagnosticText());
+
+                if (decision.Disposition == DhcpRequestDisposition.Ignore)
                 {
-                    var requestedServer = new IPAddress(serverOption);
-                    if (!requestedServer.Equals(_serverIp))
-                    {
-                        Logger?.Invoke("DHCP: REQUEST ignored because it selected another server: " + requestedServer);
-                        return;
-                    }
+                    return;
                 }
 
-                var opt50 = GetOption(request, 50);
-                if (opt50 != null && opt50.Length == 4)
+                if (decision.Disposition == DhcpRequestDisposition.Nak)
                 {
-                    var requestedIp = new IPAddress(opt50);
-                    Logger?.Invoke("DHCP: Requested IP (Option 50) = " + requestedIp);
-                    lock (_sync)
+                    var nak = DhcpNakResponse.Build(request, _serverIp);
+                    Logger?.Invoke("DHCP: REQUEST from " + MacBytesToString(mac) +
+                        " -> NAK broadcast " + DhcpNakResponse.DestinationAddress);
+                    if (_udp != null)
                     {
-                        var requestedLease = _leases.Values.FirstOrDefault(l => l.IpAddress.Equals(requestedIp));
-                        if (requestedLease != null && requestedLease != lease)
-                        {
-                            var key = MacBytesToKey(mac);
-                            _leases[key] = requestedLease;
-                            lease = requestedLease;
-                        }
+                        DhcpNakResponse.Send(_udp.Client, nak, _serverIp, _expectedInterfaceIndex);
                     }
+
+                    return;
                 }
             }
 
+            var lease = GetOrCreateLease(mac);
             var responseType = messageType == 1 ? (byte)2 : (byte)5;
             if (messageType == 1)
                 Logger?.Invoke("DHCP: DISCOVER from " + MacBytesToString(mac) + " -> OFFER " + lease.IpAddress);
@@ -233,6 +226,11 @@ namespace EzGetBmcIp
         private static string MacBytesToString(byte[] mac)
         {
             return BitConverter.ToString(mac);
+        }
+
+        private static string GetTransactionId(byte[] request)
+        {
+            return string.Concat(request.Skip(4).Take(4).Select(b => b.ToString("X2")));
         }
 
         private static int ResolveInterfaceIndex(WiredAdapter adapter)

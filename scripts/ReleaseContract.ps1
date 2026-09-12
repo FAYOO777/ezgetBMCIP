@@ -1,4 +1,4 @@
-function Resolve-ReleaseTag {
+﻿function Resolve-ReleaseTag {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]

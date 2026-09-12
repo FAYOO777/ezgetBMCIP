@@ -4,9 +4,23 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Win32;
 
 namespace EzGetBmcIp;
+
+internal sealed class AdapterOriginalConfigCapture
+{
+    internal AdapterOriginalConfigCapture(WiredAdapter adapter, AdapterOriginalConfig originalConfig)
+    {
+        Adapter = adapter;
+        OriginalConfig = originalConfig;
+    }
+
+    internal WiredAdapter Adapter { get; }
+    internal AdapterOriginalConfig OriginalConfig { get; }
+}
 
 public static class NetworkConfigManager
 {
@@ -118,6 +132,19 @@ public static class NetworkConfigManager
         }
 
         return config;
+    }
+
+    internal static async Task<AdapterOriginalConfigCapture> ResolveAndCaptureOriginalConfigAsync(
+        WiredAdapter previousAdapter,
+        CancellationToken cancellationToken)
+    {
+        return await Task.Run(() =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var resolved = ResolveCurrentAdapter(previousAdapter);
+            var original = CaptureOriginalConfig(resolved);
+            return new AdapterOriginalConfigCapture(resolved, original);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     public static Task ForceDhcpAsync(WiredAdapter adapter, SubnetConfig config, CancellationToken cancellationToken)

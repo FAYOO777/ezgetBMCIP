@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 . (Join-Path $repositoryRoot 'scripts\ReleaseContract.ps1')
@@ -108,7 +108,7 @@ try {
     Assert-Condition ($merged.Count -eq 3) 'The merged manifest did not preserve historical versions.'
     Assert-Condition ($merged[0].version -eq 'v1.3.6-test.2') 'The new release was not placed first.'
     Assert-Condition ($merged[0].prerelease -eq $true) 'The test release was not marked prerelease.'
-    Assert-Condition (($merged | Where-Object { $_.version -eq 'v1.3.5' }).Count -eq 1) 'An existing historical version was lost.'
+    Assert-Condition ((@($merged | Where-Object { $_.version -eq 'v1.3.5' })).Count -eq 1) 'An existing historical version was lost.'
 
     $mergedAgain = @(New-R2VersionManifest -ExistingEntries $merged -ReleaseInfo $prerelease -ReleaseDate '2026-08-27' -PublicDomain 'dl.example.test' -FullSize 101 -LiteSize 201 -LegacySize 301)
     Assert-Condition ($mergedAgain.Count -eq 3) 'Replacing the same tag was not idempotent.'

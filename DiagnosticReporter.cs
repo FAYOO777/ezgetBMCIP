@@ -34,6 +34,10 @@ internal static class DiagnosticReporter
         AppendLine(sb, "ReportPath", reportPath);
         AppendLine(sb, "RecoverySnapshotPath", NetworkRecoveryStore.RecoveryFilePath);
         AppendLine(sb, "RecoverySnapshotExists", File.Exists(NetworkRecoveryStore.RecoveryFilePath) ? "true" : "false");
+#if DHCP_OLD_LEASE_STUDY
+        AppendLine(sb, "TestBuild", "DHCP old-lease causality study");
+        AppendLine(sb, "TestBuildSettings", DhcpOldLeaseStudy.DiagnosticText);
+#endif
 
         progress.Report(new SupportBundleProgress(10, "正在收集应用和网络状态..."));
         await AppendSummaryAsync(sb, viewModel, isAdmin);
@@ -48,6 +52,7 @@ internal static class DiagnosticReporter
         AppendLine(sb, "DHCP listener", viewModel.DhcpListenerStatus);
         AppendLine(sb, "Discovered URL", viewModel.IsIpDiscovered ? viewModel.DiscoveredIpUrl : "(not discovered)");
         AppendLine(sb, "Endpoint status", viewModel.EndpointStatusText);
+        AppendLine(sb, "Endpoint verification", viewModel.EndpointVerificationDiagnosticText);
 
         var selected = viewModel.SelectedAdapterItem;
         AppendHeader(sb, "Selected adapter");
@@ -82,6 +87,12 @@ internal static class DiagnosticReporter
         await AppendCommandAsync(sb, "ipconfig /all", "ipconfig.exe", "/all");
         progress.Report(new SupportBundleProgress(30, "正在读取路由表..."));
         await AppendCommandAsync(sb, "route print", "route.exe", "print");
+        if (viewModel.IsIpDiscovered)
+            await AppendCommandAsync(sb, "Candidate address route", "route.exe", "print " + viewModel.DiscoveredIp);
+        progress.Report(new SupportBundleProgress(35, "正在读取邻居表和代理状态..."));
+        await AppendCommandAsync(sb, "ARP neighbor table", "arp.exe", "-a");
+        await AppendCommandAsync(sb, "WinHTTP proxy", "netsh.exe", "winhttp show proxy");
+        await AppendPowerShellAsync(sb, "WinINET proxy", "Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings' | Select-Object ProxyEnable,ProxyServer,AutoConfigURL | Format-List");
         progress.Report(new SupportBundleProgress(40, "正在检查 UDP 监听..."));
         await AppendCommandAsync(sb, "netstat UDP listeners", "netstat.exe", "-ano -p udp");
         progress.Report(new SupportBundleProgress(50, "正在检查 DHCP 服务..."));
@@ -105,7 +116,9 @@ internal static class DiagnosticReporter
                     selected.Name,
                     selected.Id,
                     selected.MacAddress,
-                    FirewallAssessmentService.GetCurrentExecutablePath());
+                    FirewallAssessmentService.GetCurrentExecutablePath(),
+                    viewModel.FirewallNetworkCategorySnapshot,
+                    CancellationToken.None);
                 sb.AppendLine(firewallAssessment.ToDiagnosticText());
             }
             catch (Exception ex)

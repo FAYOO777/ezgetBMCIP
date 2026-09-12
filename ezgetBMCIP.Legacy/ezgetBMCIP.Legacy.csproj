@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\Version.props" />
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net46</TargetFramework>
@@ -6,7 +7,6 @@
     <LangVersion>8</LangVersion>
     <RootNamespace>EzGetBmcIp.Legacy</RootNamespace>
     <AssemblyName>ezgetBMCIP-legacy</AssemblyName>
-    <Version>1.5.1</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\ezgetBMCIP.ico</ApplicationIcon>
   </PropertyGroup>
@@ -15,7 +15,15 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\ConsentNotice.cs" Link="ConsentNotice.cs" />
+    <Compile Include="..\BmcHistoryRetryPolicy.cs" Link="BmcHistoryRetryPolicy.cs" />
     <Compile Include="..\FirewallAssessment.cs" Link="FirewallAssessment.cs" />
+    <Compile Include="..\FirewallRepair.cs" Link="FirewallRepair.cs" />
+    <Compile Include="..\EndpointNetworkEnvironment.cs" Link="EndpointNetworkEnvironment.cs" />
+    <Compile Include="..\AdapterIdentityResolver.cs" Link="AdapterIdentityResolver.cs" />
+    <Compile Include="..\MainViewModel.FirewallRepair.cs" Link="MainViewModel.FirewallRepair.cs" />
+    <Compile Include="..\SessionState.cs" Link="SessionState.cs" />
+    <Compile Include="..\SessionPresentation.cs" Link="SessionPresentation.cs" />
+    <Compile Include="..\ModernRuntimePresentation.cs" Link="ModernRuntimePresentation.cs" />
     <Compile Include="..\SupportBundleCollector.cs" Link="SupportBundleCollector.cs" />
   </ItemGroup>
   <ItemGroup>

@@ -1,8 +1,11 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Data;
+using System.Windows.Media;
 using Wpf.Ui.Appearance;
 using Wpf.Ui.Controls;
 
@@ -22,16 +25,50 @@ public partial class MainWindow : FluentWindow
         InitializeComponent();
         ApplyTestReleaseTitle();
 
-        // 运行时监听系统主题变化，自动切换
-        SystemThemeWatcher.Watch(this, WindowBackdropType.Mica);
+        // Follow only the Windows light/dark mode. Product accent colors stay
+        // fixed and the window uses a solid surface rather than wallpaper Mica.
+        SystemThemeWatcher.Watch(this, WindowBackdropType.None, updateAccents: false);
 
         _vm = new MainViewModel();
         _vm.RequestClose += OnRequestClose;
         _vm.OpenBrowserRequested += OnOpenBrowser;
         _vm.ConsentRequested += OnConsentRequested;
+        _vm.PropertyChanged += OnViewModelPropertyChanged;
         DataContext = _vm;
 
         Closing += OnWindowClosing;
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainViewModel.IsFirewallRepairBusy)
+            && _vm.IsFirewallRepairBusy)
+        {
+            Dispatcher.BeginInvoke(new Action(ContentScroller.ScrollToTop));
+            return;
+        }
+
+        if (e.PropertyName != nameof(MainViewModel.CurrentSessionPage)
+            || _vm.CurrentSessionPage is not (SessionPageKind.RestoreFailed
+                or SessionPageKind.EndpointReachable
+                or SessionPageKind.EndpointUnreachable
+                or SessionPageKind.WaitingForLink
+                or SessionPageKind.WaitingForDhcp
+                or SessionPageKind.ProbingEndpoint
+                or SessionPageKind.DhcpTimedOut
+                or SessionPageKind.HistoryRetrySuggestion
+                or SessionPageKind.Failure
+                or SessionPageKind.Cancelled
+                or SessionPageKind.Restoring
+                or SessionPageKind.Ready))
+        {
+            return;
+        }
+
+        // Terminal result cards are deliberately placed at the top of the scrollable
+        // region. Returning there prevents a prior waiting-page scroll position from
+        // hiding the recovery or management action.
+        Dispatcher.BeginInvoke(new Action(ContentScroller.ScrollToTop));
     }
 
     private void ApplyTestReleaseTitle()
@@ -118,6 +155,16 @@ public partial class MainWindow : FluentWindow
             return;
 
         e.Handled = true;
+        await CollectSupportBundleAsync();
+    }
+
+    private async void CollectSupportBundle_Click(object sender, RoutedEventArgs e)
+    {
+        await CollectSupportBundleAsync();
+    }
+
+    private async Task CollectSupportBundleAsync()
+    {
         if (_isCollectingSupportBundle)
             return;
 
@@ -230,4 +277,74 @@ public partial class MainWindow : FluentWindow
             UseShellExecute = false
         });
     }
+}
+
+public sealed class SessionPageKindToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        return value is SessionPageKind page
+            && parameter is string expected
+            && string.Equals(page.ToString(), expected, StringComparison.Ordinal)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+public sealed class PresentationSeverityToBrushConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        return value is PresentationSeverity severity
+            ? severity switch
+            {
+                PresentationSeverity.Error => Application.Current?.TryFindResource("BrandCriticalBrush") as Brush ?? Brushes.Firebrick,
+                PresentationSeverity.Warning => Application.Current?.TryFindResource("BrandAttentionBrush") as Brush ?? Brushes.DarkGoldenrod,
+                PresentationSeverity.Progress => Application.Current?.TryFindResource("BrandPrimaryBrush") as Brush ?? Brushes.DodgerBlue,
+                PresentationSeverity.Success => Application.Current?.TryFindResource("BrandSuccessBrush") as Brush ?? Brushes.ForestGreen,
+                _ => Application.Current?.TryFindResource("TextFillColorSecondaryBrush") as Brush ?? Brushes.Gray
+            }
+            : Brushes.Gray;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+public sealed class ModernStageStateToBrushConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        return value is ModernStageState state
+            ? state switch
+            {
+                ModernStageState.Done => Application.Current?.TryFindResource("BrandSuccessBrush") as Brush ?? Brushes.ForestGreen,
+                ModernStageState.Active => Application.Current?.TryFindResource("BrandPrimaryBrush") as Brush ?? Brushes.DodgerBlue,
+                ModernStageState.Attention => Application.Current?.TryFindResource("BrandAttentionBrush") as Brush ?? Brushes.DarkGoldenrod,
+                ModernStageState.Failed => Application.Current?.TryFindResource("BrandCriticalBrush") as Brush ?? Brushes.Firebrick,
+                _ => Application.Current?.TryFindResource("ControlStrokeColorDefaultBrush") as Brush ?? Brushes.Gray
+            }
+            : Brushes.Gray;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+public sealed class ModernActionToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        return value is ModernActionKind action
+            && parameter is string expected
+            && string.Equals(action.ToString(), expected, StringComparison.Ordinal)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
 }

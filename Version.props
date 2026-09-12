@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <EzGetBmcIpVersion>2.0.3</EzGetBmcIpVersion>
+    <Version>$(EzGetBmcIpVersion)</Version>
+  </PropertyGroup>
+</Project>

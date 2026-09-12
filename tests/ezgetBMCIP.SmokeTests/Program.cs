@@ -1,5 +1,6 @@
 using System.IO;
 using System.IO.Compression;
+using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.NetworkInformation;
@@ -10,6 +11,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using System.Xml.Serialization;
 using EzGetBmcIp;
 using Wpf.Ui.Appearance;
@@ -21,6 +23,26 @@ internal static class Program
     {
         try
         {
+            SessionStateTests.RunAll();
+            SessionPresentationTests.RunAll();
+            AdapterIdentityResolverTests.RunAll();
+            FirewallRepairTests.RunAll();
+            await BmcReachabilityTests.RunAllAsync();
+            if (args.Length == 1 && args[0] == "--firewall-repair-readonly")
+            {
+                using var policy = new NativeFirewallRepairPolicy();
+                var rules = policy.ReadRules();
+                Console.WriteLine("Native firewall rule snapshot read successfully: " + rules.Count);
+                policy.CheckWritable(4);
+                Console.WriteLine("Public policy write eligibility check completed (no rules modified).");
+                NativeFirewallRepairPolicy.ValidateDetachedAllow(new FirewallRepairPlan
+                {
+                    AdapterName = NetworkInterface.GetAllNetworkInterfaces().First().Name,
+                    ExecutablePath = FirewallAssessmentService.GetCurrentExecutablePath(), Profile = 4
+                });
+                Console.WriteLine("Unregistered native rule creation validated (never added to firewall).");
+                return 0;
+            }
             if (args.Length == 2 && args[0] == "--render-ui")
             {
                 RenderUiSnapshot(args[1]);
@@ -35,6 +57,7 @@ internal static class Program
             AutomaticApipaIsExcludedButManualLinkLocalIsPreserved();
             StaticFallbackOnlyRunsForModeMismatch();
             await LinkCancellationDoesNotEnterMutationStageAsync();
+            await CancellationAfterLinkCompletionDoesNotEnterMutationStageAsync();
             await CancellationAfterMutationRequiresRecoveryAsync();
             WatchdogStartupDoesNotCreateInteractiveWindow();
             DhcpModeUsesRegistryValues();
@@ -42,15 +65,33 @@ internal static class Program
             await FirewallAssessmentLiveProbeFailsOpenAsync();
             ConsentNoticeDescribesNetworkChanges();
             ConsentDialogRequiresActiveAcknowledgement();
+            ModernUsageConsentUsesSafeDefaultLayout();
+            ModernNetworkChangeConsentUsesStructuredSummary();
             SupportBundleShortcutMatches();
             await SupportBundleArchiveContainsLogAndDiagnosticsAsync();
             DhcpServerUsesWildcardSocketAndInterfaceFilter();
             DhcpLeaseAssignedBeforeWaitIsCached();
             DhcpRequestServerSelectionIsRespected();
+            DhcpRequestPolicyClassifiesStates();
+            DhcpRequestPolicyRejectsMalformedRequestStates();
+            DhcpRequestNakDoesNotAssignLease();
+            DhcpOldLeaseStudyDefaultsToProductionValues();
+            BmcHistoryStoresOnlyTheLastConfirmedEndpoint();
+            BmcHistoryTcpOnlyRecordsAreInvalidAndMigrated();
+            BmcHistoryRetryEligibilityIsConservative();
             await NativeCommandOutputUsesSystemOemEncodingAsync();
             MixedNativeCommandEncodingsAreDetected();
-            await EndpointProbeFindsListeningPortAsync();
+            await BmcDiscoveryUsesExistingConfiguredAddressAsync();
+            await BmcDiscoveryCarriesVerifiedEndpointAsync();
+            await BmcDiscoveryPrefersDhcpWhenItArrivesFirstAsync();
+            await EndpointProbeRequiresHttpResponseAsync();
+            await EndpointProbeRejectsUnexpectedHttpStatusAsync();
+            await EndpointProbeRejectsBareTcpAsync();
+            await EndpointProbeRejectsRouteOrPeerMismatchAsync();
             await EndpointProbeTimesOutAsync();
+            await EndpointProbeOffloadsBlockingEvidenceAsync();
+            await EndpointProbeCancellationReturnsWithoutOverlapAsync();
+            NativeIpv4AbiPreservesWireBytes();
             Console.WriteLine("All smoke tests passed.");
             return 0;
         }
@@ -87,6 +128,28 @@ internal static class Program
         Assert(staticNotice.Title == "网络修改风险告知", "Network-change notice title was incorrect.");
         Assert(staticText.Contains("192.168.55.1 / 24"), "Temporary adapter IP was not disclosed.");
         Assert(staticText.Contains("192.168.55.100"), "Expected BMC IP was not disclosed.");
+
+        var historyNotice = ConsentNotice.CreateHistoryRetryPreparation(adapter, new BmcHistoryRecord
+        {
+            AdapterMac = adapter.MacAddress,
+            AdapterName = adapter.DisplayName,
+            BmcAddress = "192.168.77.100",
+            LocalAddress = "192.168.77.1",
+            Mask = "255.255.255.0",
+            EndpointScheme = "http",
+            EndpointPort = 80,
+            BmcMac = "6CB31126AB48",
+            LastConfirmedUtc = DateTime.UtcNow,
+            VerificationVersion = 2,
+            VerificationKind = "HttpResponseV1",
+            HttpStatusCode = 401
+        });
+        var historyText = string.Join("\n", historyNotice.Items);
+        Assert(historyNotice.Title == "按上次网段准备重试" &&
+               historyText.Contains("不会自动开始") &&
+               historyText.Contains("不会修改 BMC") &&
+               historyText.Contains("192.168.77.1 / 24"),
+            "History-retry confirmation did not disclose restoration, manual start, and BMC boundaries.");
         Assert(staticText.Contains("192.168.1.20 / 255.255.255.0"), "Static IPv4 restore target was not disclosed.");
         Assert(staticText.Contains("192.168.1.1"), "Static gateway restore target was not disclosed.");
         Assert(staticText.Contains("1.1.1.1") && staticText.Contains("8.8.8.8"),
@@ -121,6 +184,8 @@ internal static class Program
             "Public firewall without a matching application rule must warn.");
         Assert(publicNoRule.BuildConsentWarning().Contains("未发现匹配当前程序路径"),
             "Missing application rule warning was not actionable.");
+        Assert(publicNoRule.BuildConsentWarning().Contains("公用网络"),
+            "The missing-allow warning must explain how to handle a Public-network firewall prompt.");
 
         var portAllow = Rule("ezgetBMCIP DHCP Server", "Allow", "Any", "UDP", "67", adapter, "Public");
         var publicPortOnly = FirewallAssessmentService.CreateForTests(
@@ -144,7 +209,6 @@ internal static class Program
         Assert(blocked.BuildTimeoutGuidance().Contains("显式入站阻止规则") &&
                blocked.BuildTimeoutGuidance().Contains("固定 IP"),
             "High-risk timeout guidance must include firewall and fixed-IP causes.");
-
         var oldPathAllow = Rule("old path", "Allow", @"C:\Desktop\ezgetBMCIP-lite.exe", "UDP", "67", adapter, "Public");
         var movedExe = FirewallAssessmentService.CreateForTests(
             adapter, "Public", true, currentExe, new[] { oldPathAllow });
@@ -156,6 +220,11 @@ internal static class Program
             adapter, "Public", true, currentExe, new[] { tcpOnly });
         Assert(tcpAssessment.RiskLevel == FirewallRiskLevel.Warning && !tcpAssessment.HasMatchingProgramAllow,
             "A TCP-only application rule must not cover DHCP UDP/67.");
+        var tcpBlock = Rule("TCP Query User", "Block", currentExe, "TCP", "Any", adapter, "Public");
+        var tcpBlockAssessment = FirewallAssessmentService.CreateForTests(
+            adapter, "Public", true, currentExe, new[] { tcpBlock });
+        Assert(tcpBlockAssessment.RiskLevel == FirewallRiskLevel.Warning && !tcpBlockAssessment.HasMatchingProgramBlock,
+            "A TCP-only block must not be reported as blocking DHCP UDP/67.");
 
         var privateNoRule = FirewallAssessmentService.CreateForTests(
             adapter, "Private", true, currentExe, Array.Empty<FirewallRuleEvidence>());
@@ -169,11 +238,43 @@ internal static class Program
 
         var unknown = FirewallAssessmentService.CreateForTests(
             adapter, "Unknown", null, currentExe, Array.Empty<FirewallRuleEvidence>());
-        Assert(unknown.RiskLevel == FirewallRiskLevel.Unknown && !unknown.HasWarning,
-            "Unavailable firewall assessment must fail open without a blocking warning.");
+        Assert(unknown.RiskLevel == FirewallRiskLevel.Warning && unknown.HasWarning,
+            "A readable rule collection with an unknown adapter profile must remain a visible warning.");
+        Assert(unknown.BuildConsentWarning().Contains("未能确认所选网卡的网络类别"),
+            "An unknown adapter profile must explain its firewall-assessment limit.");
         Assert(unknown.BuildTimeoutGuidance().Contains("不能据此排除拦截") &&
                unknown.BuildTimeoutGuidance().Contains("固定 IP"),
             "Unknown timeout guidance must preserve both uncertainty and the fixed-IP cause.");
+
+        var privateAllow = Rule("private allow", "Allow", currentExe, "UDP", "67", adapter, "Private");
+        var publicBlock = Rule("public block", "Block", currentExe, "UDP", "67", adapter, "Public");
+        var unknownWithCrossProfileRules = FirewallAssessmentService.CreateForTests(
+            adapter, "Unknown", null, currentExe, new[] { privateAllow, publicBlock });
+        Assert(unknownWithCrossProfileRules.HasMatchingProgramAllow &&
+               unknownWithCrossProfileRules.HasMatchingProgramBlock &&
+               unknownWithCrossProfileRules.RiskLevel == FirewallRiskLevel.Warning,
+            "Cross-profile reference rules must remain visible without becoming a confirmed High risk.");
+        Assert(unknownWithCrossProfileRules.BuildConsentWarning().Contains("只作为参考"),
+            "Unknown-profile guidance must explain that cross-profile matches are reference evidence.");
+
+        unknownWithCrossProfileRules.ApplyNetworkCategorySnapshot("Public");
+        unknownWithCrossProfileRules.Profiles.Add(new FirewallProfileEvidence
+        {
+            Name = "Public",
+            Enabled = true,
+            DefaultInboundAction = "Block"
+        });
+        unknownWithCrossProfileRules.Evaluate();
+        Assert(unknownWithCrossProfileRules.UsesNetworkCategorySnapshot &&
+               unknownWithCrossProfileRules.ObservedNetworkCategory == "Unknown" &&
+               unknownWithCrossProfileRules.NetworkCategory == "Public" &&
+               unknownWithCrossProfileRules.RiskLevel == FirewallRiskLevel.High &&
+               unknownWithCrossProfileRules.HasMatchingProgramBlock &&
+               !unknownWithCrossProfileRules.HasMatchingProgramAllow,
+            "The pre-mutation profile snapshot must restore profile-specific rule evaluation.");
+        Assert(unknownWithCrossProfileRules.ToDiagnosticText().Contains(
+                "NetworkCategorySource: Captured before adapter configuration"),
+            "Diagnostics must disclose when the pre-mutation profile snapshot was used.");
 
         var rulesUnavailable = new FirewallAssessment
         {
@@ -184,8 +285,8 @@ internal static class Program
         };
         rulesUnavailable.Profiles.Add(new FirewallProfileEvidence { Name = "Public", Enabled = true });
         rulesUnavailable.Evaluate();
-        Assert(rulesUnavailable.RiskLevel == FirewallRiskLevel.Unknown && !rulesUnavailable.HasWarning,
-            "A partial assessment without rule evidence must fail open instead of showing a false warning.");
+        Assert(rulesUnavailable.RiskLevel == FirewallRiskLevel.Unknown && rulesUnavailable.HasWarning,
+            "A partial assessment without rule evidence must stay visible instead of appearing safe.");
 
         var notice = ConsentNotice.CreateNetworkChange(
             new WiredAdapter(adapter, "直连 BMC 管理口", "test-id", "001122334455"),
@@ -395,6 +496,63 @@ internal static class Program
                 Assert(warningDialog.ActualHeight <= warningDialog.MaxHeight,
                     "Firewall warning caused the consent dialog to exceed its maximum height.");
                 warningDialog.Close();
+
+                var modernNetworkNotice = ConsentNotice.CreateModernNetworkChange(
+                    new WiredAdapter("I350-右2", "直连 BMC 管理口", "test-id", "001122334455"),
+                    new SubnetConfig(),
+                    AdapterOriginalConfig.CreateDhcp(),
+                    warningAssessment);
+                var modernNetworkDialog = new ConsentDialog(modernNetworkNotice);
+                modernNetworkDialog.Show();
+                modernNetworkDialog.UpdateLayout();
+                var modernNetworkPanel = (System.Windows.Controls.StackPanel)modernNetworkDialog.FindName("NetworkChangeSummaryPanel");
+                var modernGenericBorder = (System.Windows.Controls.Border)modernNetworkDialog.FindName("GenericItemsBorder");
+                var modernFirewallWarning = (System.Windows.Controls.Border)modernNetworkDialog.FindName("FirewallWarningBorder");
+                var modernNetworkFooter = (System.Windows.Controls.Border)modernNetworkDialog.FindName("NetworkActionFooter");
+                var modernNetworkGenericActions = (System.Windows.Controls.StackPanel)modernNetworkDialog.FindName("GenericActionPanel");
+                var modernNetworkAcknowledgement = (System.Windows.Controls.CheckBox)modernNetworkDialog.FindName("NetworkAcknowledgementCheckBox");
+                var modernNetworkCancel = (Wpf.Ui.Controls.Button)modernNetworkDialog.FindName("NetworkCancelButton");
+                var modernNetworkAgree = (Wpf.Ui.Controls.Button)modernNetworkDialog.FindName("NetworkAgreeButton");
+                var modernNetworkScrollViewer = (System.Windows.Controls.ScrollViewer)modernNetworkDialog.FindName("ConsentScrollViewer");
+                Assert(modernNetworkPanel.Visibility == Visibility.Visible &&
+                       modernGenericBorder.Visibility == Visibility.Collapsed &&
+                       modernFirewallWarning.Visibility == Visibility.Collapsed &&
+                       modernNetworkFooter.Visibility == Visibility.Visible &&
+                       modernNetworkGenericActions.Visibility == Visibility.Collapsed &&
+                       System.Windows.Controls.Grid.GetRow(modernNetworkScrollViewer) == 0 &&
+                       System.Windows.Controls.Grid.GetRow(modernNetworkFooter) == 1,
+                    "Modern network-change consent did not render the structured summary layout exclusively.");
+                Assert(modernNetworkFooter.Background is SolidColorBrush footerBrush && footerBrush.Color.A == 255,
+                    "Modern network-change footer must use an opaque theme surface.");
+                Assert(modernNetworkCancel.Visibility == Visibility.Visible &&
+                       modernNetworkCancel.IsEnabled &&
+                       modernNetworkAgree.Visibility == Visibility.Visible &&
+                       !modernNetworkAgree.IsEnabled,
+                    "Modern network-change consent must highlight the safe cancel action and keep confirmation secondary.");
+                modernNetworkAcknowledgement.IsChecked = true;
+                Assert(modernNetworkAgree.IsEnabled,
+                    "Modern network-change consent confirmation did not enable after acknowledgement.");
+                modernNetworkDialog.Close();
+
+                var modernDialog = new ConsentDialog(ConsentNotice.CreateModernUsageRisk());
+                modernDialog.Show();
+                modernDialog.UpdateLayout();
+                var cancelButton = (Wpf.Ui.Controls.Button)modernDialog.FindName("CancelButton");
+                var secondaryAgreeButton = (Wpf.Ui.Controls.Button)modernDialog.FindName("AgreeSecondaryButton");
+                var primaryAgreeButton = (Wpf.Ui.Controls.Button)modernDialog.FindName("AgreeButton");
+                Assert(cancelButton.Visibility == Visibility.Visible,
+                    "Modern usage consent must highlight the cancel action.");
+                Assert(cancelButton.Focusable,
+                    "Modern usage consent cancel action must remain focusable for the initial safe focus.");
+                Assert(primaryAgreeButton.Visibility != Visibility.Visible,
+                    "Modern usage consent must not show the primary confirm style (actual=" + primaryAgreeButton.Visibility + ", safe=" + ((ConsentNotice)modernDialog.DataContext).PreferSafeDefault + ").");
+                Assert(!secondaryAgreeButton.IsEnabled,
+                    "Modern usage consent confirmation must start disabled.");
+                var modernAcknowledgement = (System.Windows.Controls.CheckBox)modernDialog.FindName("AcknowledgementCheckBox");
+                modernAcknowledgement.IsChecked = true;
+                Assert(secondaryAgreeButton.IsEnabled,
+                    "Modern usage consent confirmation did not enable after acknowledgement.");
+                modernDialog.Close();
                 app.Shutdown();
             }
             catch (Exception ex)
@@ -409,6 +567,114 @@ internal static class Program
             throw new TimeoutException("Consent dialog test timed out.");
         if (failure is not null)
             throw new InvalidOperationException("Consent dialog test failed.", failure);
+    }
+
+    private static void ModernUsageConsentUsesSafeDefaultLayout()
+    {
+        var notice = ConsentNotice.CreateModernUsageRisk();
+        Assert(notice.Title == "开始前请确认", "Modern usage consent title changed unexpectedly.");
+        Assert(notice.Sections.Count == 2, "Modern usage consent must keep two grouped sections.");
+        Assert(notice.Sections.Sum(section => section.Items.Count) == 5,
+            "Modern usage consent must keep five risk items.");
+        Assert(notice.PreferSafeDefault, "Modern usage consent must prefer the safe exit action.");
+        Assert(ConsentNotice.CreateUsageRisk().Sections.Count == 0,
+            "Legacy usage consent must retain the original flat layout.");
+
+    }
+
+    private static void ModernNetworkChangeConsentUsesStructuredSummary()
+    {
+        var adapter = new WiredAdapter("I350-右2", "Intel(R) Ethernet Server Adapter I350-T4", "test-id", "001122334455");
+        var subnet = new SubnetConfig
+        {
+            Octet1 = 10,
+            Octet2 = 77,
+            Octet3 = 77,
+            Octet4 = 1
+        };
+        var exe = @"C:\Tools\ezgetBMCIP-lite.exe";
+        var allow = FirewallAssessmentService.CreateForTests(
+            adapter.Name, "Public", true, exe,
+            new[] { Rule("app allow", "Allow", exe, "UDP", "67", adapter.Name, "Public") });
+        var notice = ConsentNotice.CreateModernNetworkChange(
+            adapter, subnet, AdapterOriginalConfig.CreateDhcp(), allow);
+
+        Assert(notice.HasNetworkChangeSummary && notice.LayoutKind == ConsentLayoutKind.NetworkChangeSummary,
+            "Modern network-change consent must use the structured summary layout.");
+        Assert(notice.Title == "网络修改风险告知" &&
+               notice.Intro == "确认后，工具会临时修改所选网卡并启动 DHCP。" &&
+               notice.AcknowledgementText == "我已核对本次修改和恢复方式，确认继续" &&
+               notice.ConfirmButtonText == "同意并开始",
+            "Modern network-change consent copy changed unexpectedly.");
+        var modernContent = notice.NetworkChange!;
+        Assert(!modernContent.HasFirewallNotice,
+            "A None firewall assessment must keep the network-change notice quiet.");
+        Assert(modernContent.ChangeRows.Any(row => row.Label == "目标网卡" && row.Value == adapter.DisplayName) &&
+               modernContent.ChangeRows.Any(row => row.Label == "临时 IPv4" && row.Value == subnet.ServerDisplay) &&
+               modernContent.ChangeRows.Any(row => row.Label == "预期管理地址" && row.Value == subnet.PoolDisplay) &&
+               modernContent.ChangeRows.Any(row => row.Label == "运行期间" &&
+                   row.Value.Contains("不能用于上网、远程桌面或其他业务连接") &&
+                   row.Value.Contains("启动临时 DHCP")),
+            "Modern network-change rows did not use the existing adapter and subnet values.");
+        Assert(modernContent.RestoreSummary.Any(text => text.Contains("已记录这块网卡原有的 IPv4 和 DNS 设置")) &&
+               modernContent.RestoreSummary.Any(text => text.Contains("恢复后会重新获取租约，地址可能不同")) &&
+               modernContent.RestoreDetails.Contains("IPv4 模式：DHCP 自动获取") &&
+               modernContent.RestoreDetails.Contains("IPv6、VPN、额外静态路由"),
+            "DHCP restore summary or details omitted the recovery caveats.");
+
+        var staticConfig = new AdapterOriginalConfig
+        {
+            DhcpEnabled = false,
+            DnsServersFromDhcp = false
+        };
+        staticConfig.StaticAddresses.Add(new AdapterIpv4Address(
+            IPAddress.Parse("192.168.1.20"), IPAddress.Parse("255.255.255.0")));
+        staticConfig.Gateways.Add(IPAddress.Parse("192.168.1.1"));
+        staticConfig.GatewayMetrics.Add(25);
+        staticConfig.DnsServers.Add(IPAddress.Parse("1.1.1.1"));
+        var staticNotice = ConsentNotice.CreateModernNetworkChange(adapter, subnet, staticConfig, null);
+        Assert(staticNotice.NetworkChange!.RestoreSummary.Any(text => text.Contains("原静态 IPv4、网关和 DNS 将按记录写回")) &&
+               staticNotice.NetworkChange.RestoreDetails.Contains("跃点 25") &&
+               staticNotice.NetworkChange.RestoreDetails.Contains("1.1.1.1"),
+            "Static restore summary or details omitted the recorded gateway metric or DNS.");
+
+        var legacyNotice = ConsentNotice.CreateNetworkChange(adapter, subnet, staticConfig, allow);
+        Assert(!legacyNotice.HasNetworkChangeSummary && legacyNotice.Items.Count == 5,
+            "Legacy network-change consent must retain its original flat layout.");
+
+        var portOnly = FirewallAssessmentService.CreateForTests(
+            adapter.Name, "Public", true, exe,
+            new[] { Rule("port allow", "Allow", "Any", "UDP", "67", adapter.Name, "Public") });
+        var portOnlyNotice = ConsentNotice.CreateModernNetworkChange(adapter, subnet, staticConfig, portOnly).NetworkChange!;
+        Assert(portOnlyNotice.HasFirewallNotice &&
+               portOnlyNotice.FirewallNotice!.Title == "防火墙许可需要确认" &&
+               portOnlyNotice.FirewallNotice.Status == ConsentFirewallNoticeStatus.Attention &&
+               portOnlyNotice.FirewallNotice.Description.Contains("未确认它覆盖当前程序路径"),
+            "Port-only firewall allow must remain an attention notice without overstating coverage.");
+        Assert(portOnlyNotice.FirewallNotice!.Details.Contains(exe),
+            "Firewall details did not preserve the complete executable path.");
+        var blocked = FirewallAssessmentService.CreateForTests(
+            adapter.Name, "Public", true, exe,
+            new[] { Rule("block", "Block", exe, "UDP", "67", adapter.Name, "Public") });
+        var blockedNotice = ConsentNotice.CreateModernNetworkChange(adapter, subnet, staticConfig, blocked).NetworkChange!;
+        Assert(blockedNotice.HasFirewallNotice &&
+               blockedNotice.FirewallNotice!.Title == "防火墙可能阻断 DHCP" &&
+               blockedNotice.FirewallNotice.Status == ConsentFirewallNoticeStatus.Impact &&
+               blockedNotice.FirewallNotice.Description.Contains("不是 DHCP 必然失败"),
+            "Explicit firewall block must remain an impact notice without guaranteeing DHCP failure.");
+        var unknown = FirewallAssessmentService.CreateForTests(
+            adapter.Name, "Unknown", null, exe, Array.Empty<FirewallRuleEvidence>());
+        var unknownNotice = ConsentNotice.CreateModernNetworkChange(adapter, subnet, staticConfig, unknown).NetworkChange!;
+        Assert(unknownNotice.HasFirewallNotice &&
+               unknownNotice.FirewallNotice!.Title == "防火墙状态无法完整确认" &&
+               unknownNotice.FirewallNotice.Status == ConsentFirewallNoticeStatus.Attention &&
+               unknownNotice.FirewallNotice.Description.Contains("公用网络"),
+            "Unknown firewall assessment must remain an attention notice.");
+        var missingNotice = ConsentNotice.CreateModernNetworkChange(adapter, subnet, staticConfig, null).NetworkChange!;
+        Assert(missingNotice.HasFirewallNotice &&
+               missingNotice.FirewallNotice!.Title == "防火墙状态无法完整确认" &&
+               missingNotice.FirewallNotice.Status == ConsentFirewallNoticeStatus.Attention,
+            "Missing firewall assessment must remain an attention notice.");
     }
 
     private static void DhcpLeaseAssignedBeforeWaitIsCached()
@@ -493,22 +759,267 @@ internal static class Program
             "A DHCPREQUEST selecting this server must be accepted.");
     }
 
+    private static void DhcpRequestPolicyClassifiesStates()
+    {
+        var serverIp = IPAddress.Parse("10.99.99.1");
+        var mask = IPAddress.Parse("255.255.255.0");
+        var fixedBmcIp = IPAddress.Parse("10.99.99.100");
+        var oldBmcIp = IPAddress.Parse("10.77.77.100");
+
+        Assert(DhcpRequestPolicy.Classify(
+                BuildDhcpRequest(requestedIp: fixedBmcIp, serverIdentifier: serverIp),
+                serverIp, mask, fixedBmcIp).Disposition == DhcpRequestDisposition.Ack,
+            "A current-subnet SELECTING request must receive DHCPACK.");
+        Assert(DhcpRequestPolicy.Classify(
+                BuildDhcpRequest(requestedIp: fixedBmcIp),
+                serverIp, mask, fixedBmcIp).Disposition == DhcpRequestDisposition.Ack,
+            "A current-subnet INIT-REBOOT request must receive DHCPACK.");
+        Assert(DhcpRequestPolicy.Classify(
+                BuildDhcpRequest(ciaddr: fixedBmcIp),
+                serverIp, mask, fixedBmcIp).Disposition == DhcpRequestDisposition.Ack,
+            "A current-subnet Renew/Rebind request must receive DHCPACK.");
+
+        Assert(DhcpRequestPolicy.Classify(
+                BuildDhcpRequest(requestedIp: fixedBmcIp, serverIdentifier: IPAddress.Parse("10.77.77.1")),
+                serverIp, mask, fixedBmcIp).Disposition == DhcpRequestDisposition.Ignore,
+            "A request selecting another DHCP server must remain ignored.");
+        Assert(DhcpRequestPolicy.Classify(
+                BuildDhcpRequest(ciaddr: oldBmcIp),
+                serverIp, mask, fixedBmcIp).Disposition == DhcpRequestDisposition.Nak,
+            "The captured old-ciaddr DHCPREQUEST must receive DHCPNAK, not DHCPACK.");
+        Assert(DhcpRequestPolicy.Classify(
+                BuildDhcpRequest(requestedIp: oldBmcIp),
+                serverIp, mask, fixedBmcIp).Disposition == DhcpRequestDisposition.Nak,
+            "An INIT-REBOOT request for an old subnet must receive DHCPNAK.");
+        Assert(DhcpRequestPolicy.Classify(
+                BuildDhcpRequest(ciaddr: fixedBmcIp, requestedIp: IPAddress.Parse("10.99.99.101")),
+                serverIp, mask, fixedBmcIp).Disposition == DhcpRequestDisposition.Ignore,
+            "Contradictory ciaddr and Option 50 fields must be ignored.");
+        Assert(DhcpRequestPolicy.Classify(
+                BuildDhcpRequest(giaddr: IPAddress.Parse("10.10.20.1")),
+                serverIp, mask, fixedBmcIp).Disposition == DhcpRequestDisposition.Ignore,
+            "DHCP relay requests must be ignored by the direct-connect server.");
+        Assert(DhcpRequestPolicy.Classify(
+                BuildDhcpRequest(),
+                serverIp, mask, fixedBmcIp).Disposition == DhcpRequestDisposition.Ignore,
+            "A DHCPREQUEST without ciaddr or Option 50 must be ignored.");
+
+        var nak = DhcpNakResponse.Build(BuildDhcpRequest(ciaddr: oldBmcIp), serverIp);
+        Assert(nak.Skip(16).Take(4).All(value => value == 0),
+            "A DHCPNAK must set yiaddr to 0.0.0.0.");
+        Assert(ReadDhcpOption(nak, 53)?.SequenceEqual(new byte[] { 6 }) == true,
+            "A DHCPNAK must contain DHCP message type 6.");
+        Assert(ReadDhcpOption(nak, 54)?.SequenceEqual(serverIp.GetAddressBytes()) == true,
+            "A DHCPNAK must identify the current DHCP server.");
+        foreach (var forbiddenOption in new byte[] { 1, 3, 6, 51, 58, 59 })
+        {
+            Assert(ReadDhcpOption(nak, forbiddenOption) is null,
+                "A DHCPNAK must not include address-configuration option " + forbiddenOption + ".");
+        }
+
+        Assert(DhcpNakResponse.DestinationAddress.Equals(IPAddress.Broadcast),
+            "A direct-connect DHCPNAK must use the global broadcast destination.");
+    }
+
+    private static void DhcpRequestNakDoesNotAssignLease()
+    {
+        var config = new SubnetConfig { Octet1 = 10, Octet2 = 99, Octet3 = 99, Octet4 = 1 };
+        var oldBmcIp = IPAddress.Parse("10.77.77.100");
+        var currentBmcIp = IPAddress.Parse("10.99.99.100");
+        var logs = new List<string>();
+        var assignedCount = 0;
+        using var server = new DhcpServer(config, 0) { Logger = logs.Add };
+        server.LeaseAssigned += (_, _) => assignedCount++;
+
+        server.HandlePacketForTestAsync(BuildDhcpRequest(ciaddr: oldBmcIp)).GetAwaiter().GetResult();
+        Assert(server.LastAssignedLease is null && assignedCount == 0,
+            "A DHCPNAK path must not allocate, cache, or publish a lease.");
+        Assert(logs.Any(line => line.Contains("ciaddr=10.77.77.100", StringComparison.Ordinal) &&
+                                line.Contains("option50=absent", StringComparison.Ordinal) &&
+                                line.Contains("option54=absent", StringComparison.Ordinal) &&
+                                line.Contains("disposition=Nak", StringComparison.Ordinal)),
+            "DHCPREQUEST diagnostics must record ciaddr, Option 50, Option 54, and the NAK decision.");
+
+        server.HandlePacketForTestAsync(BuildDhcpRequest(ciaddr: currentBmcIp)).GetAwaiter().GetResult();
+        Assert(server.LastAssignedLease?.IpAddress.Equals(currentBmcIp) == true && assignedCount == 1,
+            "A valid current-subnet renewal must still assign and publish the fixed BMC lease.");
+    }
+
+    private static void DhcpRequestPolicyRejectsMalformedRequestStates()
+    {
+        var serverIp = IPAddress.Parse("10.99.99.1");
+        var mask = IPAddress.Parse("255.255.255.0");
+        var fixedBmcIp = IPAddress.Parse("10.99.99.100");
+
+        var badCookie = BuildDhcpRequest(requestedIp: fixedBmcIp);
+        badCookie[236] = 0;
+        Assert(DhcpRequestPolicy.Classify(badCookie, serverIp, mask, fixedBmcIp).Disposition == DhcpRequestDisposition.Ignore,
+            "A DHCPREQUEST with an invalid magic cookie must be ignored.");
+
+        var missingType = BuildDhcpRequest().Take(240).Append((byte)255).ToArray();
+        Assert(DhcpRequestPolicy.Classify(missingType, serverIp, mask, fixedBmcIp).Disposition == DhcpRequestDisposition.Ignore,
+            "A DHCPREQUEST without message type 3 must be ignored.");
+
+        var invalidType = BuildDhcpRequest();
+        invalidType[242] = 1;
+        Assert(DhcpRequestPolicy.Classify(invalidType, serverIp, mask, fixedBmcIp).Disposition == DhcpRequestDisposition.Ignore,
+            "A non-DHCPREQUEST message type must be ignored by the request classifier.");
+
+        Assert(DhcpRequestPolicy.Classify(
+                AppendDhcpOption(BuildDhcpRequest(), 53, new byte[] { 3 }),
+                serverIp, mask, fixedBmcIp).Disposition == DhcpRequestDisposition.Ignore,
+            "A DHCPREQUEST with duplicate message-type options must be ignored.");
+        Assert(DhcpRequestPolicy.Classify(
+                AppendDhcpOption(BuildDhcpRequest(requestedIp: fixedBmcIp), 50, fixedBmcIp.GetAddressBytes()),
+                serverIp, mask, fixedBmcIp).Disposition == DhcpRequestDisposition.Ignore,
+            "A DHCPREQUEST with duplicate Option 50 must be ignored.");
+        Assert(DhcpRequestPolicy.Classify(
+                AppendDhcpOption(BuildDhcpRequest(serverIdentifier: serverIp), 54, serverIp.GetAddressBytes()),
+                serverIp, mask, fixedBmcIp).Disposition == DhcpRequestDisposition.Ignore,
+            "A DHCPREQUEST with duplicate Option 54 must be ignored.");
+        Assert(DhcpRequestPolicy.Classify(
+                AppendDhcpOption(BuildDhcpRequest(), 50, new byte[] { 10, 99, 99 }),
+                serverIp, mask, fixedBmcIp).Disposition == DhcpRequestDisposition.Ignore,
+            "A DHCPREQUEST with an invalid Option 50 length must be ignored.");
+
+        var truncated = BuildDhcpRequest(requestedIp: fixedBmcIp);
+        Array.Resize(ref truncated, truncated.Length - 1);
+        Assert(DhcpRequestPolicy.Classify(truncated, serverIp, mask, fixedBmcIp).Disposition == DhcpRequestDisposition.Ignore,
+            "A DHCPREQUEST with a truncated options field must be ignored.");
+
+        Assert(DhcpRequestPolicy.Classify(
+                BuildDhcpRequest(ciaddr: fixedBmcIp, requestedIp: fixedBmcIp),
+                serverIp, mask, fixedBmcIp).Disposition == DhcpRequestDisposition.Ignore,
+            "A ciaddr renewal carrying Option 50 must be ignored as an invalid mixed state.");
+        Assert(DhcpRequestPolicy.Classify(
+                BuildDhcpRequest(ciaddr: fixedBmcIp, serverIdentifier: serverIp),
+                serverIp, mask, fixedBmcIp).Disposition == DhcpRequestDisposition.Ignore,
+            "A ciaddr renewal carrying Option 54 must be ignored as an invalid mixed state.");
+
+        using var server = new DhcpServer(new SubnetConfig { Octet1 = 10, Octet2 = 99, Octet3 = 99, Octet4 = 1 }, 0);
+        var assignedCount = 0;
+        server.LeaseAssigned += (_, _) => assignedCount++;
+        server.HandlePacketForTestAsync(BuildDhcpRequest(ciaddr: fixedBmcIp, requestedIp: fixedBmcIp)).GetAwaiter().GetResult();
+        Assert(server.LastAssignedLease is null && assignedCount == 0,
+            "An invalid mixed DHCPREQUEST must not create or publish a lease.");
+    }
+
+    private static void DhcpOldLeaseStudyDefaultsToProductionValues()
+    {
+        Assert(!DhcpOldLeaseStudy.IsEnabled,
+            "The ordinary smoke-test build must not enable the old-lease study controls.");
+        Assert(DhcpOldLeaseStudy.LeaseSeconds == 3600 &&
+               DhcpOldLeaseStudy.RenewalSeconds == 1800 &&
+               DhcpOldLeaseStudy.RebindingSeconds == 3150,
+            "The ordinary build must preserve the 3600/1800/3150 DHCP timing values.");
+    }
+
     private static byte[] BuildDhcpRequestWithServerIdentifier(IPAddress serverIdentifier)
     {
-        var packet = new byte[250];
+        return BuildDhcpRequest(serverIdentifier: serverIdentifier);
+    }
+
+    private static byte[] BuildDhcpRequest(
+        IPAddress? ciaddr = null,
+        IPAddress? requestedIp = null,
+        IPAddress? serverIdentifier = null,
+        IPAddress? giaddr = null)
+    {
+        var packet = new byte[300];
         packet[0] = 1;
+        packet[1] = 1;
+        packet[2] = 6;
+        packet[4] = 0x4C;
+        packet[5] = 0xAA;
+        packet[6] = 0x92;
+        packet[7] = 0x23;
+        Array.Copy(new byte[] { 0x6C, 0xB3, 0x11, 0x26, 0xAB, 0x48 }, 0, packet, 28, 6);
+        if (ciaddr is not null)
+        {
+            Array.Copy(ciaddr.GetAddressBytes(), 0, packet, 12, 4);
+        }
+
+        if (giaddr is not null)
+        {
+            Array.Copy(giaddr.GetAddressBytes(), 0, packet, 24, 4);
+        }
+
         packet[236] = 99;
         packet[237] = 130;
         packet[238] = 83;
         packet[239] = 99;
-        packet[240] = 53;
-        packet[241] = 1;
-        packet[242] = 3;
-        packet[243] = 54;
-        packet[244] = 4;
-        Array.Copy(serverIdentifier.GetAddressBytes(), 0, packet, 245, 4);
-        packet[249] = 255;
-        return packet;
+        var optionIndex = 240;
+        WriteDhcpOption(packet, ref optionIndex, 53, new byte[] { 3 });
+        if (requestedIp is not null)
+        {
+            WriteDhcpOption(packet, ref optionIndex, 50, requestedIp.GetAddressBytes());
+        }
+
+        if (serverIdentifier is not null)
+        {
+            WriteDhcpOption(packet, ref optionIndex, 54, serverIdentifier.GetAddressBytes());
+        }
+
+        packet[optionIndex++] = 255;
+        return packet.Take(optionIndex).ToArray();
+    }
+
+    private static void WriteDhcpOption(byte[] packet, ref int index, byte code, byte[] value)
+    {
+        packet[index++] = code;
+        packet[index++] = (byte)value.Length;
+        Array.Copy(value, 0, packet, index, value.Length);
+        index += value.Length;
+    }
+
+    private static byte[] AppendDhcpOption(byte[] packet, byte code, byte[] value)
+    {
+        var endIndex = Array.LastIndexOf(packet, (byte)255);
+        Assert(endIndex >= 240, "The DHCP test packet did not contain an end option.");
+        return packet.Take(endIndex)
+            .Append(code)
+            .Append((byte)value.Length)
+            .Concat(value)
+            .Append((byte)255)
+            .ToArray();
+    }
+
+    private static byte[]? ReadDhcpOption(byte[] packet, byte expectedCode)
+    {
+        var index = 240;
+        while (index < packet.Length)
+        {
+            var code = packet[index++];
+            if (code == 255)
+            {
+                return null;
+            }
+
+            if (code == 0)
+            {
+                continue;
+            }
+
+            if (index >= packet.Length)
+            {
+                return null;
+            }
+
+            var length = packet[index++];
+            if (index + length > packet.Length)
+            {
+                return null;
+            }
+
+            if (code == expectedCode)
+            {
+                return packet.Skip(index).Take(length).ToArray();
+            }
+
+            index += length;
+        }
+
+        return null;
     }
 
     private static void RecoverySnapshotRoundTrips()
@@ -708,8 +1219,36 @@ internal static class Program
 
         Assert(!configureCalled,
             "Adapter mutation or recovery snapshot stage ran before Link UP.");
-        Assert(!MainViewModel.ShouldRestoreAdapter(false),
+        Assert(!(new CurrentSessionState()).RequiresNetworkRecovery,
             "No-link cancellation incorrectly requested adapter restoration.");
+    }
+
+    private static async Task CancellationAfterLinkCompletionDoesNotEnterMutationStageAsync()
+    {
+        var configureCalled = false;
+        using var cts = new CancellationTokenSource();
+        try
+        {
+            await MainViewModel.RunLinkThenConfigureAsync(
+                token =>
+                {
+                    cts.Cancel();
+                    return Task.CompletedTask;
+                },
+                token =>
+                {
+                    configureCalled = true;
+                    return Task.CompletedTask;
+                },
+                cts.Token);
+            throw new InvalidOperationException("Cancellation after Link completion unexpectedly entered configuration.");
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        Assert(!configureCalled,
+            "Cancellation between Link completion and configuration entered the adapter mutation stage.");
     }
 
     private static async Task CancellationAfterMutationRequiresRecoveryAsync()
@@ -730,7 +1269,11 @@ internal static class Program
         {
         }
 
-        Assert(mutationStarted && MainViewModel.ShouldRestoreAdapter(mutationStarted),
+        var sessionState = new CurrentSessionState
+        {
+            Network = NetworkLifecycleState.TemporaryConfigurationMayBeActive
+        };
+        Assert(mutationStarted && sessionState.RequiresNetworkRecovery,
             "Cancellation after the first mutation was not routed to recovery.");
     }
 
@@ -759,29 +1302,493 @@ internal static class Program
             "Missing registry DHCP values must use the fallback detector.");
     }
 
-    private static async Task EndpointProbeFindsListeningPortAsync()
+    private static async Task BmcDiscoveryUsesExistingConfiguredAddressAsync()
+    {
+        var configuredAddress = IPAddress.Parse("192.168.77.100");
+        var dhcpCancelled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var result = await BmcDiscovery.WaitForAddressAsync(
+            configuredAddress,
+            token =>
+            {
+                var pendingDhcp = new TaskCompletionSource<IPAddress>(TaskCreationOptions.RunContinuationsAsynchronously);
+                token.Register(() =>
+                {
+                    dhcpCancelled.TrySetResult(true);
+                    pendingDhcp.TrySetCanceled(token);
+                });
+                return pendingDhcp.Task;
+            },
+            (address, _) =>
+            {
+                Assert(address.Equals(configuredAddress),
+                    "The existing-address probe must use the configured DHCP pool address.");
+                return Task.FromResult(true);
+            },
+            CancellationToken.None);
+
+        Assert(result.Source == BmcDiscoverySource.ExistingConfiguredAddress &&
+               result.IpAddress.Equals(configuredAddress),
+            "A reachable retained .100 address must win without waiting for DHCP renewal.");
+        await dhcpCancelled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+
+    private static void BmcHistoryStoresOnlyTheLastConfirmedEndpoint()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "ezgetBMCIP-history-smoke-" + Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(root, "bmc-history.json");
+        var adapter = new WiredAdapter("I350-测试", "直连 BMC 管理口", "adapter-a", "00-11-22-33-44-55");
+        var firstSubnet = new SubnetConfig { Octet1 = 192, Octet2 = 168, Octet3 = 77, Octet4 = 1 };
+        var firstEndpoint = new BmcEndpointProbeResult
+        {
+            Scheme = "http",
+            Port = 80,
+            Url = "http://192.168.77.100",
+            VerificationVersion = 2,
+            VerificationKind = "HttpResponseV1",
+            HttpStatusCode = 401,
+            PeerMac = "6C-B3-11-26-AB-48"
+        };
+
+        try
+        {
+            BmcHistoryStore.SaveConfirmedEndpoint(
+                adapter, firstSubnet, IPAddress.Parse("192.168.77.100"), firstEndpoint,
+                "6C-B3-11-26-AB-48", path);
+
+            var loaded = BmcHistoryStore.LoadForAdapter(adapter, path);
+            Assert(loaded is not null && loaded.BmcAddress == "192.168.77.100" &&
+                   loaded.LocalAddress == "192.168.77.1" && loaded.BmcMac == "6CB31126AB48",
+                "A confirmed BMC endpoint was not recorded for its adapter.");
+
+            var reachableAddress = new BmcReachabilityResult
+            {
+                TargetAddress = IPAddress.Parse("192.168.77.100"),
+                PingSucceeded = true
+            };
+            BmcHistoryStore.SaveReachableAddress(
+                adapter, firstSubnet, IPAddress.Parse("192.168.77.100"), reachableAddress,
+                "6C-B3-11-26-AB-48", path);
+            loaded = BmcHistoryStore.LoadForAdapter(adapter, path);
+            Assert(loaded is not null && loaded.VerificationVersion == 3 &&
+                   loaded.VerificationKind == "AddressReachableV1" &&
+                   loaded.PingSucceeded && string.IsNullOrEmpty(loaded.EndpointScheme) &&
+                   loaded.EndpointPort == 0,
+                "A Ping-only reachable address was not stored without a fabricated web endpoint.");
+
+            var newerSubnet = new SubnetConfig { Octet1 = 10, Octet2 = 88, Octet3 = 77, Octet4 = 1 };
+            var newerEndpoint = new BmcEndpointProbeResult
+            {
+                Scheme = "https",
+                Port = 443,
+                Url = "https://10.88.77.100",
+                VerificationVersion = 2,
+                VerificationKind = "HttpResponseV1",
+                HttpStatusCode = 302,
+                PeerMac = "6C-B3-11-26-AB-49"
+            };
+            BmcHistoryStore.SaveConfirmedEndpoint(
+                adapter, newerSubnet, IPAddress.Parse("10.88.77.100"), newerEndpoint, "", path);
+
+            loaded = BmcHistoryStore.LoadForAdapter(adapter, path);
+            Assert(loaded is not null && loaded.BmcAddress == "10.88.77.100" &&
+                   loaded.LocalAddress == "10.88.77.1" && loaded.EndpointScheme == "https" &&
+                   loaded.VerificationVersion == 2 && loaded.VerificationKind == "HttpResponseV1" &&
+                   loaded.HttpStatusCode == 302 && loaded.BmcMac == "6CB31126AB49",
+                "A later confirmed BMC endpoint did not replace the adapter's previous record.");
+            var latest = loaded ?? throw new InvalidOperationException("The latest BMC history record was missing.");
+
+            var differentAdapter = new WiredAdapter("I350-其他", "其他", "adapter-b", "00-11-22-33-44-56");
+            Assert(BmcHistoryStore.LoadForAdapter(differentAdapter, path) is null,
+                "A BMC history record was offered to a different physical adapter.");
+
+            Assert(latest.TryApplyTo(firstSubnet) && firstSubnet.ServerIp == "10.88.77.1",
+                "A valid BMC history record did not restore its saved local subnet values.");
+
+            File.WriteAllText(path, "not valid json");
+            Assert(BmcHistoryStore.LoadForAdapter(adapter, path) is null,
+                "A damaged BMC history record must be ignored.");
+        }
+        finally
+        {
+            try { if (Directory.Exists(root)) Directory.Delete(root, true); } catch { }
+        }
+    }
+
+    private static void BmcHistoryTcpOnlyRecordsAreInvalidAndMigrated()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "ezgetBMCIP-history-v2-smoke-" + Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(root, "bmc-history.json");
+        var adapter = new WiredAdapter("I350-测试", "直连 BMC 管理口", "adapter-a", "001122334455");
+        var currentSubnet = new SubnetConfig { Octet1 = 10, Octet2 = 77, Octet3 = 77, Octet4 = 1 };
+        var legacyRecord = new BmcHistoryRecord
+        {
+            AdapterMac = adapter.MacAddress,
+            AdapterName = adapter.DisplayName,
+            BmcAddress = "192.168.77.100",
+            LocalAddress = "192.168.77.1",
+            Mask = "255.255.255.0",
+            EndpointScheme = "https",
+            EndpointPort = 443,
+            BmcMac = "6CB31126AB48",
+            LastConfirmedUtc = DateTime.UtcNow
+            // Intentionally no v2 verification fields: this simulates the
+            // TCP-connect-only record written by 1.5.6 and earlier.
+        };
+
+        try
+        {
+            Directory.CreateDirectory(root);
+            WriteBmcHistoryDocument(path, new BmcHistoryDocument
+            {
+                Records = new List<BmcHistoryRecord> { legacyRecord }
+            });
+
+            Assert(!legacyRecord.IsValid(),
+                "A TCP-only BMC history record must be invalid after the v2 verification upgrade.");
+            var v2TcpOnlyRecord = new BmcHistoryRecord
+            {
+                AdapterMac = legacyRecord.AdapterMac,
+                AdapterName = legacyRecord.AdapterName,
+                BmcAddress = legacyRecord.BmcAddress,
+                LocalAddress = legacyRecord.LocalAddress,
+                Mask = legacyRecord.Mask,
+                EndpointScheme = legacyRecord.EndpointScheme,
+                EndpointPort = legacyRecord.EndpointPort,
+                BmcMac = legacyRecord.BmcMac,
+                LastConfirmedUtc = legacyRecord.LastConfirmedUtc,
+                VerificationVersion = 2,
+                VerificationKind = "TcpConnectV1",
+                HttpStatusCode = 200
+            };
+            Assert(!v2TcpOnlyRecord.IsValid(),
+                "A v2-versioned record without the HTTP-response verification kind must remain invalid.");
+            var noStatusRecord = new BmcHistoryRecord
+            {
+                AdapterMac = legacyRecord.AdapterMac,
+                AdapterName = legacyRecord.AdapterName,
+                BmcAddress = legacyRecord.BmcAddress,
+                LocalAddress = legacyRecord.LocalAddress,
+                Mask = legacyRecord.Mask,
+                EndpointScheme = legacyRecord.EndpointScheme,
+                EndpointPort = legacyRecord.EndpointPort,
+                BmcMac = legacyRecord.BmcMac,
+                LastConfirmedUtc = legacyRecord.LastConfirmedUtc,
+                VerificationVersion = 2,
+                VerificationKind = "HttpResponseV1",
+                HttpStatusCode = 0
+            };
+            Assert(!noStatusRecord.IsValid(),
+                "An HTTP verification record without a real status code must remain invalid.");
+            var proxyStatusRecord = new BmcHistoryRecord
+            {
+                AdapterMac = legacyRecord.AdapterMac,
+                AdapterName = legacyRecord.AdapterName,
+                BmcAddress = legacyRecord.BmcAddress,
+                LocalAddress = legacyRecord.LocalAddress,
+                Mask = legacyRecord.Mask,
+                EndpointScheme = legacyRecord.EndpointScheme,
+                EndpointPort = legacyRecord.EndpointPort,
+                BmcMac = legacyRecord.BmcMac,
+                LastConfirmedUtc = legacyRecord.LastConfirmedUtc,
+                VerificationVersion = 2,
+                VerificationKind = "HttpResponseV1",
+                HttpStatusCode = 407
+            };
+            Assert(!proxyStatusRecord.IsValid(),
+                "A proxy-authentication response must never become a BMC history suggestion.");
+            Assert(BmcHistoryStore.LoadForAdapter(adapter, path) is null,
+                "A pre-v2 BMC history record was offered for a subnet retry.");
+            Assert(!BmcHistoryRetryPolicy.ShouldOffer(
+                    adapter, currentSubnet, legacyRecord, false, FirewallRiskLevel.Warning),
+                "The retry policy accepted a TCP-only history record.");
+
+            var tcpOnlyEndpoint = new BmcEndpointProbeResult
+            {
+                Scheme = "https",
+                Port = 443,
+                Url = "https://10.77.77.100",
+                VerificationVersion = 1,
+                VerificationKind = "TcpConnectV1",
+                HttpStatusCode = 0,
+                PeerMac = "6C-B3-11-26-AB-48"
+            };
+            var tcpOnlyRejected = false;
+            try
+            {
+                BmcHistoryStore.SaveConfirmedEndpoint(
+                    adapter, currentSubnet, IPAddress.Parse("10.77.77.100"), tcpOnlyEndpoint,
+                    "6C-B3-11-26-AB-48", path);
+            }
+            catch (InvalidOperationException)
+            {
+                tcpOnlyRejected = true;
+            }
+            Assert(tcpOnlyRejected,
+                "Saving an endpoint without a verified HTTP response must fail closed.");
+
+            var verifiedEndpoint = new BmcEndpointProbeResult
+            {
+                Scheme = "https",
+                Port = 443,
+                Url = "https://10.77.77.100",
+                VerificationVersion = 2,
+                VerificationKind = "HttpResponseV1",
+                HttpStatusCode = 401,
+                PeerMac = "6C-B3-11-26-AB-48"
+            };
+            BmcHistoryStore.SaveConfirmedEndpoint(
+                adapter, currentSubnet, IPAddress.Parse("10.77.77.100"), verifiedEndpoint,
+                "6C-B3-11-26-AB-48", path);
+
+            var loaded = BmcHistoryStore.LoadForAdapter(adapter, path);
+            Assert(loaded is not null
+                   && loaded.VerificationVersion == 2
+                   && loaded.VerificationKind == "HttpResponseV1"
+                   && loaded.HttpStatusCode == 401
+                   && loaded.BmcMac == "6CB31126AB48",
+                "A v2 history record did not retain the verified HTTP and ARP evidence.");
+
+            var document = ReadBmcHistoryDocument(path);
+            Assert(document.Records.Count == 1 && document.Records[0].IsValid(),
+                "The successful v2 save did not atomically replace the invalid legacy history record.");
+
+            File.WriteAllText(path, "{\"Records\":null}");
+            Assert(BmcHistoryStore.LoadForAdapter(adapter, path) is null,
+                "A structurally incomplete history document must be ignored without throwing.");
+        }
+        finally
+        {
+            try { if (Directory.Exists(root)) Directory.Delete(root, true); } catch { }
+        }
+    }
+
+    private static void WriteBmcHistoryDocument(string path, BmcHistoryDocument document)
+    {
+        using (var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            var serializer = new System.Runtime.Serialization.Json.DataContractJsonSerializer(typeof(BmcHistoryDocument));
+            serializer.WriteObject(stream, document);
+        }
+    }
+
+    private static BmcHistoryDocument ReadBmcHistoryDocument(string path)
+    {
+        using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            var serializer = new System.Runtime.Serialization.Json.DataContractJsonSerializer(typeof(BmcHistoryDocument));
+            return (BmcHistoryDocument)serializer.ReadObject(stream)!;
+        }
+    }
+
+    private static void BmcHistoryRetryEligibilityIsConservative()
+    {
+        var adapter = new WiredAdapter("I350-测试", "直连 BMC 管理口", "adapter-a", "001122334455");
+        var currentSubnet = new SubnetConfig { Octet1 = 10, Octet2 = 77, Octet3 = 77, Octet4 = 1 };
+        var history = new BmcHistoryRecord
+        {
+            AdapterMac = "001122334455",
+            AdapterName = adapter.DisplayName,
+            BmcAddress = "192.168.77.100",
+            LocalAddress = "192.168.77.1",
+            Mask = "255.255.255.0",
+            EndpointScheme = "http",
+            EndpointPort = 80,
+            BmcMac = "6CB31126AB48",
+            LastConfirmedUtc = DateTime.UtcNow,
+            VerificationVersion = 2,
+            VerificationKind = "HttpResponseV1",
+            HttpStatusCode = 401
+        };
+
+        Assert(BmcHistoryRetryPolicy.ShouldOffer(adapter, currentSubnet, history, false, FirewallRiskLevel.Warning),
+            "A first timeout on a different historical subnet should offer one manual retry.");
+        Assert(!BmcHistoryRetryPolicy.ShouldOffer(adapter, currentSubnet, history, true, FirewallRiskLevel.Warning),
+            "A second timeout in the same application session must not repeat the history hint.");
+        Assert(!BmcHistoryRetryPolicy.ShouldOffer(adapter, currentSubnet, history, false, FirewallRiskLevel.High),
+            "An explicit firewall block must take precedence over an old-subnet suggestion.");
+
+        currentSubnet.Octet1 = 192;
+        currentSubnet.Octet2 = 168;
+        Assert(!BmcHistoryRetryPolicy.ShouldOffer(adapter, currentSubnet, history, false, FirewallRiskLevel.Warning),
+            "The current historical subnet must not offer a redundant retry hint.");
+    }
+
+    private static async Task BmcDiscoveryCarriesVerifiedEndpointAsync()
+    {
+        var configuredAddress = IPAddress.Parse("192.168.77.100");
+        var verified = new BmcEndpointProbeResult
+        {
+            Url = "https://192.168.77.100",
+            Scheme = "https",
+            Port = 443,
+            VerificationVersion = BmcEndpointProbe.StrictVerificationVersion,
+            VerificationKind = BmcEndpointProbe.StrictVerificationKind,
+            HttpStatusCode = 401,
+            PeerMac = "6CB31126AB48"
+        };
+
+        var result = await BmcDiscovery.WaitForAddressAsync(
+            configuredAddress,
+            async token =>
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                return IPAddress.None;
+            },
+            (address, _) =>
+            {
+                Assert(address.Equals(configuredAddress),
+                    "The strict configured-address probe must receive the pool address.");
+                return Task.FromResult(verified);
+            },
+            CancellationToken.None);
+
+        Assert(result.Source == BmcDiscoverySource.ExistingConfiguredAddress &&
+               ReferenceEquals(result.VerifiedEndpoint, verified),
+            "Configured-address discovery did not preserve its strict endpoint proof.");
+    }
+
+    private static async Task BmcDiscoveryPrefersDhcpWhenItArrivesFirstAsync()
+    {
+        var configuredAddress = IPAddress.Parse("192.168.77.100");
+        var dhcpAddress = IPAddress.Parse("192.168.77.101");
+        var probeCancelled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var result = await BmcDiscovery.WaitForAddressAsync(
+            configuredAddress,
+            _ => Task.FromResult(dhcpAddress),
+            async (_, token) =>
+            {
+                token.Register(() => probeCancelled.TrySetResult(true));
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                return false;
+            },
+            CancellationToken.None);
+
+        Assert(result.Source == BmcDiscoverySource.Dhcp && result.IpAddress.Equals(dhcpAddress),
+            "A newly assigned DHCP address must win when it arrives before the configured-address probe.");
+        await probeCancelled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+
+    private static async Task EndpointProbeRequiresHttpResponseAsync()
     {
         var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        var acceptTask = listener.AcceptTcpClientAsync();
+        var responder = RespondOnceAsync(listener, "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
         try
         {
-            var result = await BmcEndpointProbe.WaitForEndpointAsync(
-                IPAddress.Loopback,
+            var outcome = await BmcEndpointProbe.ProbeForEndpointAsync(
+                CreateLoopbackProbeRequest(),
                 TimeSpan.FromSeconds(2),
                 CancellationToken.None,
-                candidates: new[] { new BmcEndpointCandidate { Scheme = "https", Port = port } });
-            using var accepted = await acceptTask.WaitAsync(TimeSpan.FromSeconds(2));
+                candidates: new[] { new BmcEndpointCandidate { Scheme = "http", Port = port } },
+                networkEvidenceProvider: new FixedEndpointNetworkEvidenceProvider());
+            await responder.WaitAsync(TimeSpan.FromSeconds(2));
 
-            Assert(result is not null, "Listening endpoint was not detected.");
-            Assert(result!.Scheme == "https" && result.Port == port, "Detected endpoint was incorrect.");
-            Assert(result.Url == "https://127.0.0.1:" + port, "Detected URL was incorrect.");
+            var result = outcome.VerifiedEndpoint;
+            Assert(result is not null, "A complete HTTP management response was not detected.");
+            Assert(result!.Scheme == "http" && result.Port == port, "Detected endpoint was incorrect.");
+            Assert(result.Url == "http://127.0.0.1:" + port, "Detected URL was incorrect.");
+            Assert(result.VerificationVersion == 2 && result.VerificationKind == "HttpResponseV1" &&
+                   result.HttpStatusCode == 401 && result.PeerMac == "6CB31126AB48",
+                "A strict HTTP endpoint did not retain verification evidence.");
         }
         finally
         {
             listener.Stop();
         }
+    }
+
+    private static async Task EndpointProbeRejectsUnexpectedHttpStatusAsync()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        // The first informational response and the final proxy challenge are
+        // deliberately written together to cover both final-header parsing
+        // and the no-proxy-false-success contract.
+        var responder = RespondOnceAsync(listener,
+            "HTTP/1.1 100 Continue\r\n\r\n" +
+            "HTTP/1.1 407 Proxy Authentication Required\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        try
+        {
+            var outcome = await BmcEndpointProbe.ProbeForEndpointAsync(
+                CreateLoopbackProbeRequest(),
+                TimeSpan.FromSeconds(2),
+                CancellationToken.None,
+                candidates: new[] { new BmcEndpointCandidate { Scheme = "http", Port = port } },
+                networkEvidenceProvider: new FixedEndpointNetworkEvidenceProvider());
+            await responder.WaitAsync(TimeSpan.FromSeconds(2));
+
+            Assert(outcome.VerifiedEndpoint is null,
+                "A proxy challenge must never be treated as a BMC management page.");
+            Assert(outcome.Evidence.HttpResponseReceived && outcome.Evidence.HttpStatusCode == 407 &&
+                   outcome.Evidence.FailureStage == EndpointProbeFailureStage.UnexpectedHttpStatus,
+                "The probe did not retain the final unexpected HTTP status as diagnostic evidence.");
+            Assert(!BmcEndpointProbe.IsAcceptedManagementHttpStatus(100) &&
+                   !BmcEndpointProbe.IsAcceptedManagementHttpStatus(407) &&
+                   !BmcEndpointProbe.IsAcceptedManagementHttpStatus(503) &&
+                   BmcEndpointProbe.IsAcceptedManagementHttpStatus(302) &&
+                   BmcEndpointProbe.IsAcceptedManagementHttpStatus(401),
+                "The accepted management HTTP status set is too broad or rejects normal BMC responses.");
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
+
+    private static async Task EndpointProbeRejectsBareTcpAsync()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var accepted = listener.AcceptTcpClientAsync();
+        try
+        {
+            var outcome = await BmcEndpointProbe.ProbeForEndpointAsync(
+                CreateLoopbackProbeRequest(),
+                TimeSpan.FromMilliseconds(300),
+                CancellationToken.None,
+                candidates: new[] { new BmcEndpointCandidate { Scheme = "http", Port = port } },
+                networkEvidenceProvider: new FixedEndpointNetworkEvidenceProvider());
+            using var client = await accepted.WaitAsync(TimeSpan.FromSeconds(2));
+
+            Assert(outcome.VerifiedEndpoint is null,
+                "A bare TCP handshake must never be treated as a BMC management service.");
+            Assert(outcome.Evidence.FailureStage == EndpointProbeFailureStage.HttpResponseMissing,
+                "The bare TCP rejection did not report its HTTP-response failure stage.");
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
+
+    private static async Task EndpointProbeRejectsRouteOrPeerMismatchAsync()
+    {
+        var request = CreateLoopbackProbeRequest();
+        var routeMismatch = await BmcEndpointProbe.ProbeForEndpointAsync(
+            request,
+            TimeSpan.FromMilliseconds(40),
+            CancellationToken.None,
+            candidates: new[] { new BmcEndpointCandidate { Scheme = "http", Port = 80 } },
+            networkEvidenceProvider: new FixedEndpointNetworkEvidenceProvider { InterfaceIndex = 2 });
+        Assert(routeMismatch.VerifiedEndpoint is null &&
+               routeMismatch.Evidence.FailureStage == EndpointProbeFailureStage.RouteInterfaceMismatch,
+            "A route selected through another adapter must fail before transport probing.");
+
+        request.ExpectedPeerMac = "001122334455";
+        var peerMismatch = await BmcEndpointProbe.ProbeForEndpointAsync(
+            request,
+            TimeSpan.FromMilliseconds(40),
+            CancellationToken.None,
+            candidates: new[] { new BmcEndpointCandidate { Scheme = "http", Port = 80 } },
+            networkEvidenceProvider: new FixedEndpointNetworkEvidenceProvider());
+        Assert(peerMismatch.VerifiedEndpoint is null &&
+               peerMismatch.Evidence.FailureStage == EndpointProbeFailureStage.PeerMacMismatch,
+            "A DHCP MAC mismatch must fail before transport probing.");
     }
 
     private static async Task EndpointProbeTimesOutAsync()
@@ -791,12 +1798,124 @@ internal static class Program
         var unusedPort = ((IPEndPoint)reservation.LocalEndpoint).Port;
         reservation.Stop();
 
-        var result = await BmcEndpointProbe.WaitForEndpointAsync(
-            IPAddress.Loopback,
+        var outcome = await BmcEndpointProbe.ProbeForEndpointAsync(
+            CreateLoopbackProbeRequest(),
             TimeSpan.FromMilliseconds(250),
             CancellationToken.None,
-            candidates: new[] { new BmcEndpointCandidate { Scheme = "http", Port = unusedPort } });
-        Assert(result is null, "Closed endpoint should have timed out.");
+            candidates: new[] { new BmcEndpointCandidate { Scheme = "http", Port = unusedPort } },
+            networkEvidenceProvider: new FixedEndpointNetworkEvidenceProvider());
+        Assert(outcome.VerifiedEndpoint is null, "Closed endpoint should have timed out.");
+    }
+
+    private static async Task EndpointProbeOffloadsBlockingEvidenceAsync()
+    {
+        var completion = new TaskCompletionSource<ProbeDispatcherResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            var dispatcher = Dispatcher.CurrentDispatcher;
+            var provider = new BlockingEndpointNetworkEvidenceProvider(1100);
+            var ticks = 0;
+            var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+            timer.Tick += (_, __) => ticks++;
+            timer.Start();
+
+            var probeTask = BmcEndpointProbe.ProbeForEndpointAsync(
+                CreateLoopbackProbeRequest(),
+                TimeSpan.FromSeconds(2),
+                CancellationToken.None,
+                candidates: new[] { new BmcEndpointCandidate { Scheme = "http", Port = 1 } },
+                networkEvidenceProvider: provider);
+            _ = probeTask.ContinueWith(
+                completed => dispatcher.BeginInvoke(new Action(() =>
+                {
+                    timer.Stop();
+                    completion.TrySetResult(new ProbeDispatcherResult
+                    {
+                        DispatcherThreadId = Thread.CurrentThread.ManagedThreadId,
+                        ProviderThreadId = provider.LastInspectThreadId,
+                        TimerTicks = ticks,
+                        MaxInFlight = provider.MaxInFlight,
+                        Faulted = completed.IsFaulted
+                    });
+                    dispatcher.BeginInvokeShutdown(DispatcherPriority.Background);
+                })),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+            Dispatcher.Run();
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        var result = await completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        thread.Join(TimeSpan.FromSeconds(2));
+        Assert(!result.Faulted, "A slow endpoint evidence provider unexpectedly faulted the probe.");
+        Assert(result.ProviderThreadId != result.DispatcherThreadId,
+            "Blocking endpoint evidence inspection still ran on the WPF dispatcher.");
+        Assert(result.TimerTicks >= 7,
+            "DispatcherTimer did not continue refreshing while endpoint evidence was inspected.");
+        Assert(result.MaxInFlight == 1,
+            "A single endpoint probe started overlapping native evidence reads.");
+    }
+
+    private static async Task EndpointProbeCancellationReturnsWithoutOverlapAsync()
+    {
+        var provider = new BlockingEndpointNetworkEvidenceProvider(1400);
+        using var cancellation = new CancellationTokenSource();
+        var probe = BmcEndpointProbe.ProbeForEndpointAsync(
+            CreateLoopbackProbeRequest(),
+            TimeSpan.FromSeconds(5),
+            cancellation.Token,
+            candidates: new[] { new BmcEndpointCandidate { Scheme = "http", Port = 1 } },
+            networkEvidenceProvider: provider);
+        await provider.Started.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        var started = Stopwatch.StartNew();
+        cancellation.Cancel();
+        try
+        {
+            await probe;
+            throw new InvalidOperationException("Cancelled endpoint probe unexpectedly completed successfully.");
+        }
+        catch (OperationCanceledException)
+        {
+            Assert(started.Elapsed < TimeSpan.FromMilliseconds(700),
+                "Endpoint probe cancellation waited for a slow native evidence call.");
+        }
+
+        await provider.Completed.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert(provider.MaxInFlight == 1,
+            "A cancelled endpoint probe allowed another native evidence read to overlap.");
+    }
+
+    private static BmcEndpointProbeRequest CreateLoopbackProbeRequest()
+    {
+        return new BmcEndpointProbeRequest
+        {
+            TargetAddress = IPAddress.Loopback,
+            SourceAddress = IPAddress.Loopback,
+            AdapterName = "loopback-test",
+            AdapterId = "loopback-test",
+            InterfaceIndex = 1
+        };
+    }
+
+    private static async Task RespondOnceAsync(TcpListener listener, string response)
+    {
+        using var client = await listener.AcceptTcpClientAsync();
+        using var stream = client.GetStream();
+        var request = new byte[1024];
+        _ = await stream.ReadAsync(request, 0, request.Length);
+        var bytes = Encoding.ASCII.GetBytes(response);
+        await stream.WriteAsync(bytes, 0, bytes.Length);
+    }
+
+    private static void NativeIpv4AbiPreservesWireBytes()
+    {
+        var address = IPAddress.Parse("10.77.77.100");
+        var native = NativeEndpointNetworkEvidenceProvider.ToNativeIpv4ForWindows(address);
+        Assert(BitConverter.GetBytes(native).SequenceEqual(address.GetAddressBytes()),
+            "The IP helper IPv4 ABI value no longer preserves network-order address bytes.");
     }
 
     private static void RenderUiSnapshot(string outputPath)
@@ -812,7 +1931,7 @@ internal static class Program
                 var window = new MainWindow
                 {
                     Width = 700,
-                    Height = 900
+                    Height = 660
                 };
                 var supportProgressCard = (System.Windows.Controls.Border)window.FindName("SupportProgressCard");
                 Assert(supportProgressCard is not null && supportProgressCard.Visibility == Visibility.Collapsed,
@@ -825,20 +1944,61 @@ internal static class Program
                 var vm = (MainViewModel)window.DataContext;
                 vm.AppPhase = AppPhase.FlowRunning;
                 vm.DiscoveredIp = "10.77.77.100";
-                vm.EndpointStatusText = "IP 已分配，但 45 秒内管理页面尚未响应。可以重新检测，或手动尝试 HTTPS / HTTP。";
+                vm.SessionState.Workflow = DiscoveryWorkflowState.EndpointUnreachable;
+                vm.SessionState.Network = NetworkLifecycleState.TemporaryConfigurationActive;
+                typeof(MainViewModel).GetMethod("NotifySessionStateChanged", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(vm, null);
+                vm.EndpointStatusText = "IP 已分配，但 5 秒内尚未确认 Ping 或 TCP 80/443 可达。可以重新检测，或手动尝试 HTTPS / HTTP。";
                 vm.AdapterCardLine1 = "测试网卡 - 直连 BMC 管理口";
                 vm.CurrentStepIndex = 3;
                 vm.BadgeState = StepState.Pending;
-                vm.BadgeText = "等待页面";
+                vm.BadgeText = "等待可达性";
                 vm.ActivityText = "DHCP 地址分配已完成，管理页面仍在启动或使用了其他端口。";
+                typeof(MainViewModel).GetMethod("SetHistoryRetrySuggestion", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(vm, new object[] { new BmcHistoryRecord
+                    {
+                        AdapterMac = "001122334455",
+                        AdapterName = "测试网卡",
+                        BmcAddress = "192.168.77.100",
+                        LocalAddress = "192.168.77.1",
+                        Mask = "255.255.255.0",
+                        EndpointScheme = "http",
+                        EndpointPort = 80,
+                        BmcMac = "6CB31126AB48",
+                        LastConfirmedUtc = DateTime.UtcNow,
+                        VerificationVersion = 2,
+                        VerificationKind = "HttpResponseV1",
+                        HttpStatusCode = 401
+                    } });
+                typeof(MainViewModel).GetProperty("ShowSupportBundleAction", BindingFlags.Instance | BindingFlags.Public)!
+                    .SetValue(vm, true);
+
+                Assert(!vm.ShowLegacySupportBundleCard,
+                    "EndpointUnreachable left the legacy failure support card eligible to render beside the new terminal page.");
 
                 window.Show();
                 window.UpdateLayout();
-                var endpointButtons = FindVisualChildren<System.Windows.Controls.Button>(window)
-                    .Where(button => button.Content is string text &&
-                        (text == "复制地址" || text == "打开 HTTPS" || text == "打开 HTTP" || text == "重新检测"))
+                var startPreflightOverlay = (System.Windows.Controls.Border)window.FindName("StartPreflightOverlay")
+                    ?? throw new InvalidOperationException("Start preflight overlay was not found.");
+                var startPreflightCard = (System.Windows.Controls.Border)window.FindName("StartPreflightCard")
+                    ?? throw new InvalidOperationException("Start preflight card was not found.");
+                Assert(startPreflightOverlay.Background is SolidColorBrush scrimBrush && scrimBrush.Color.A < 255,
+                    "Preflight overlay scrim must remain a deliberate translucent layer.");
+                Assert(startPreflightCard.Background is SolidColorBrush preflightBrush && preflightBrush.Color.A == 255,
+                    "Preflight central card must use an opaque theme surface.");
+                var modernRuntimeHost = (System.Windows.Controls.Border)window.FindName("ModernRuntimeHost")
+                    ?? throw new InvalidOperationException("Modern runtime host was not found.");
+                Assert(modernRuntimeHost.Visibility == Visibility.Visible,
+                    "The unified modern runtime host was not selected for the running session.");
+                var endpointButtons = FindVisualChildren<System.Windows.Controls.Button>(modernRuntimeHost)
+                    .Where(button => button.IsVisible && button.Content is string text &&
+                        (text == "复制地址" || text == "重新检测"))
                     .ToList();
-                Assert(endpointButtons.Count == 4, "Endpoint action buttons were not all rendered.");
+                Assert(endpointButtons.Count == 2,
+                    "Endpoint primary/secondary actions were not rendered. Count=" + endpointButtons.Count +
+                        "; page=" + vm.CurrentSessionPage + ".");
+                Assert(vm.CurrentSessionPage == SessionPageKind.EndpointUnreachable,
+                    "EndpointUnreachable was not selected from CurrentSessionPage.");
                 var buttonBounds = endpointButtons
                     .Select(button =>
                     {
@@ -848,11 +2008,204 @@ internal static class Program
                     .ToList();
                 Assert(buttonBounds.All(rect => rect.Left >= 0 && rect.Right <= window.ActualWidth),
                     "Endpoint action buttons overflow the window.");
+                Assert(buttonBounds.Any(rect => rect.Bottom <= window.ActualHeight - 64),
+                    "EndpointUnreachable primary actions were not visible above the fixed footer at the default window height.");
                 for (var i = 0; i < buttonBounds.Count; i++)
                 {
                     for (var j = i + 1; j < buttonBounds.Count; j++)
                         Assert(!buttonBounds[i].IntersectsWith(buttonBounds[j]), "Endpoint action buttons overlap.");
                 }
+
+                var notifySession = typeof(MainViewModel).GetMethod(
+                    "NotifySessionStateChanged", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                vm.SessionState.ClearCandidateAddress();
+                vm.SessionState.ClearFailure();
+                vm.SessionState.Workflow = DiscoveryWorkflowState.WaitingForLink;
+                vm.SessionState.Network = NetworkLifecycleState.Untouched;
+                notifySession.Invoke(vm, null);
+                window.UpdateLayout();
+                Assert(vm.CurrentSessionPage == SessionPageKind.WaitingForLink
+                    && modernRuntimeHost.Visibility == Visibility.Visible,
+                    "WaitingForLink was not selected from CurrentSessionPage.");
+                Assert(vm.NetworkStatusText == "本机网卡：尚未修改" && vm.ExitButtonText == "停止并退出",
+                    "WaitingForLink did not retain the untouched-network exit semantics.");
+
+                vm.SessionState.Workflow = DiscoveryWorkflowState.WaitingForDhcp;
+                vm.SessionState.Network = NetworkLifecycleState.TemporaryConfigurationActive;
+                notifySession.Invoke(vm, null);
+                typeof(MainViewModel).GetMethod("StartDhcpElapsedTimer", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(vm, null);
+                window.UpdateLayout();
+                Assert(vm.CurrentSessionPage == SessionPageKind.WaitingForDhcp
+                    && modernRuntimeHost.Visibility == Visibility.Visible
+                    && vm.DhcpElapsedText == "00:00",
+                    "WaitingForDhcp did not render its local elapsed display from zero.");
+                Assert(vm.SessionState.Workflow == DiscoveryWorkflowState.WaitingForDhcp,
+                    "DHCP elapsed display incorrectly changed SessionState.");
+                typeof(MainViewModel).GetMethod("StopDhcpElapsedTimer", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(vm, new object[] { true });
+
+                vm.DiscoveredIp = "10.77.77.100";
+                vm.SessionState.Workflow = DiscoveryWorkflowState.ProbingEndpoint;
+                notifySession.Invoke(vm, null);
+                window.UpdateLayout();
+                Assert(vm.CurrentSessionPage == SessionPageKind.ProbingEndpoint
+                    && modernRuntimeHost.Visibility == Visibility.Visible
+                    && !vm.ShowLegacyRuntimeProgress,
+                    "ProbingEndpoint did not use the unified modern runtime host.");
+
+                typeof(MainViewModel).GetMethod("SetHistoryRetrySuggestion", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(vm, new object?[] { null });
+                typeof(MainViewModel).GetMethod("SetDhcpElapsedToMaximum", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(vm, null);
+                vm.SessionState.ClearCandidateAddress();
+                vm.SessionState.Workflow = DiscoveryWorkflowState.Failed;
+                vm.SessionState.SetFailure(FailureKind.DhcpTimedOut, "test timeout");
+                notifySession.Invoke(vm, null);
+                window.UpdateLayout();
+                Assert(vm.CurrentSessionPage == SessionPageKind.DhcpTimedOut
+                    && modernRuntimeHost.Visibility == Visibility.Visible
+                    && vm.DhcpElapsedText == "03:00",
+                    "DhcpTimedOut did not render its independent timeout page and capped elapsed time.");
+                Assert(!vm.ShowLegacyRuntimeProgress && !vm.ShowLegacySupportBundleCard,
+                    "DhcpTimedOut left a legacy terminal card eligible to render.");
+                var timeoutSupportButton = FindVisualChildren<System.Windows.Controls.Button>(modernRuntimeHost)
+                    .Single(button => button.IsVisible && button.Content is string text && text == "导出支持包");
+                var timeoutSupportPoint = timeoutSupportButton.TransformToAncestor(window).Transform(new Point(0, 0));
+                Assert(timeoutSupportPoint.Y + timeoutSupportButton.ActualHeight <= window.ActualHeight - 64,
+                    "DhcpTimedOut support action was not visible above the fixed footer at the default window height.");
+
+                vm.SessionState.SetFailure(FailureKind.EndpointProbeError, "probe test");
+                notifySession.Invoke(vm, null);
+                window.UpdateLayout();
+                Assert(vm.CurrentSessionPage == SessionPageKind.Failure
+                    && modernRuntimeHost.Visibility == Visibility.Visible
+                    && !vm.CanRetryEndpointFromFailure,
+                    "EndpointProbeError without a candidate exposed an invalid retry action.");
+                var failureSupportButton = FindVisualChildren<System.Windows.Controls.Button>(modernRuntimeHost)
+                    .Single(button => button.IsVisible && button.Content is string text && text == "导出支持包");
+                var failureSupportPoint = failureSupportButton.TransformToAncestor(window).Transform(new Point(0, 0));
+                Assert(failureSupportPoint.Y + failureSupportButton.ActualHeight <= window.ActualHeight - 64,
+                    "Failure support action was not visible above the fixed footer at the default window height.");
+                vm.DiscoveredIp = "10.77.77.100";
+                vm.SessionState.SetFailure(FailureKind.EndpointProbeError, "probe test");
+                notifySession.Invoke(vm, null);
+                window.UpdateLayout();
+                Assert(vm.CanRetryEndpointFromFailure,
+                    "EndpointProbeError with a candidate did not expose the existing retry action.");
+
+                vm.SessionState.ClearFailure();
+                vm.SessionState.ClearCandidateAddress();
+                vm.SessionState.Workflow = DiscoveryWorkflowState.Cancelled;
+                vm.SessionState.Network = NetworkLifecycleState.Untouched;
+                notifySession.Invoke(vm, null);
+                window.UpdateLayout();
+                Assert(vm.CurrentSessionPage == SessionPageKind.Cancelled
+                    && modernRuntimeHost.Visibility == Visibility.Visible
+                    && !vm.FailureTitle.Contains("失败"),
+                    "Cancelled was rendered as an error page.");
+
+                vm.SessionState.Network = NetworkLifecycleState.Restoring;
+                notifySession.Invoke(vm, null);
+                window.UpdateLayout();
+                var footerExitButton = FindVisualChildren<System.Windows.Controls.Button>(window)
+                    .Single(button => button.IsVisible && button.Content is string text && text == "正在恢复网卡…");
+                Assert(vm.CurrentSessionPage == SessionPageKind.Restoring
+                    && modernRuntimeHost.Visibility == Visibility.Visible
+                    && !footerExitButton.IsEnabled,
+                    "Restoring did not select the recovery page and disable the shared exit action.");
+
+                vm.SessionState.Network = NetworkLifecycleState.TemporaryConfigurationActive;
+                vm.SessionState.Workflow = DiscoveryWorkflowState.EndpointUnreachable;
+                vm.SessionState.SetCandidateAddress("10.77.77.100", CandidateAddressSource.DhcpAck);
+                notifySession.Invoke(vm, null);
+                window.UpdateLayout();
+
+                vm.SessionState.Workflow = DiscoveryWorkflowState.EndpointReachable;
+                vm.SessionState.ClearFailure();
+                typeof(MainViewModel).GetMethod("NotifySessionStateChanged", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(vm, null);
+                window.UpdateLayout();
+                Assert(vm.CurrentSessionPage == SessionPageKind.EndpointReachable
+                    && modernRuntimeHost.Visibility == Visibility.Visible,
+                    "EndpointReachable page was not selected from CurrentSessionPage.");
+                var openManagementButton = FindVisualChildren<System.Windows.Controls.Button>(modernRuntimeHost)
+                    .SingleOrDefault(button => button.IsVisible && button.Content is string text && text == "打开管理页面");
+                Assert(openManagementButton is not null,
+                    "EndpointReachable page did not render its primary management-page action.");
+                var openManagementPoint = openManagementButton!.TransformToAncestor(window).Transform(new Point(0, 0));
+                Assert(openManagementPoint.Y + openManagementButton.ActualHeight <= window.ActualHeight - 64,
+                    "EndpointReachable primary action was not visible above the fixed footer at the default window height.");
+
+                vm.SessionState.Network = NetworkLifecycleState.RestoreFailed;
+                vm.SessionState.SetFailure(FailureKind.PendingRecoveryFailed, "test pending recovery failure");
+                typeof(MainViewModel).GetMethod("NotifySessionStateChanged", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(vm, null);
+                window.UpdateLayout();
+                Assert(vm.CurrentSessionPage == SessionPageKind.RestoreFailed
+                    && modernRuntimeHost.Visibility == Visibility.Visible,
+                    "RestoreFailed page did not override EndpointReachable.");
+                Assert(modernRuntimeHost.Visibility == Visibility.Visible,
+                    "RestoreFailed did not leave the unified runtime host visible.");
+                var retryRestoreButtons = FindVisualChildren<System.Windows.Controls.Button>(window)
+                    .Where(button => button.IsVisible && button.Content is string text && text == "重试恢复网卡")
+                    .ToList();
+                Assert(retryRestoreButtons.Count == 1
+                    && !FindVisualChildren<System.Windows.Controls.Button>(modernRuntimeHost)
+                        .Any(button => button.IsVisible && button.Content is string text && text == "重试恢复网卡"),
+                    "RestoreFailed duplicated its RetryRestore action instead of using the fixed footer once.");
+
+                vm.SessionState.Workflow = DiscoveryWorkflowState.Failed;
+                notifySession.Invoke(vm, null);
+                window.UpdateLayout();
+                Assert(vm.CurrentSessionPage == SessionPageKind.RestoreFailed
+                    && !vm.ShowHistoryRetryCard
+                    && vm.ExitButtonText == "重试恢复网卡"
+                    && vm.IsExitActionEnabled,
+                    "RestoreFailed did not override Failed/PendingRecoveryFailed or retained a normal exit action.");
+
+                typeof(MainViewModel).GetMethod("SetHistoryRetrySuggestion", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(vm, new object[] { new BmcHistoryRecord
+                    {
+                        AdapterMac = "001122334455",
+                        AdapterName = "测试网卡",
+                        BmcAddress = "192.168.77.100",
+                        LocalAddress = "192.168.77.1",
+                        Mask = "255.255.255.0",
+                        EndpointScheme = "http",
+                        EndpointPort = 80,
+                        BmcMac = "6CB31126AB48",
+                        LastConfirmedUtc = DateTime.UtcNow,
+                        VerificationVersion = 2,
+                        VerificationKind = "HttpResponseV1",
+                        HttpStatusCode = 401
+                    } });
+                vm.SessionState.Network = NetworkLifecycleState.TemporaryConfigurationActive;
+                vm.SessionState.Workflow = DiscoveryWorkflowState.Failed;
+                vm.SessionState.SetFailure(FailureKind.DhcpTimedOut, "test timeout");
+                typeof(MainViewModel).GetMethod("NotifySessionStateChanged", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(vm, null);
+                window.UpdateLayout();
+                var historyRetryButton = FindVisualChildren<System.Windows.Controls.Button>(window)
+                    .SingleOrDefault(button => button.IsVisible && ReferenceEquals(button.Command, vm.PrepareHistoryRetryCommand));
+                Assert(historyRetryButton is not null && historyRetryButton.IsVisible,
+                    "The history-subnet retry action was not rendered for a first DHCP timeout.");
+                var historyRetryPoint = historyRetryButton!.TransformToAncestor(window).Transform(new Point(0, 0));
+                var historyRetryBounds = new Rect(
+                    historyRetryPoint.X, historyRetryPoint.Y,
+                    historyRetryButton.ActualWidth, historyRetryButton.ActualHeight);
+                Assert(historyRetryBounds.Left >= 0 && historyRetryBounds.Right <= window.ActualWidth,
+                    "History-subnet retry action overflowed the window.");
+
+                MainViewModel.ResetSessionStateForNewFlow(vm.SessionState);
+                vm.AppPhase = AppPhase.AdapterSelection;
+                notifySession.Invoke(vm, null);
+                window.UpdateLayout();
+                Assert(vm.CurrentSessionPage == SessionPageKind.Ready
+                    && !historyRetryButton.IsVisible
+                    && modernRuntimeHost.Visibility == Visibility.Collapsed,
+                    "Returning to adapter selection after a history retry retained old timeout content.");
+                vm.AppPhase = AppPhase.FlowRunning;
 
                 var supportProgressPoint = visibleSupportProgressCard.TransformToAncestor(window).Transform(new Point(0, 0));
                 var supportProgressBounds = new Rect(
@@ -862,8 +2215,54 @@ internal static class Program
                     visibleSupportProgressCard.ActualHeight);
                 Assert(supportProgressBounds.Left >= 0 && supportProgressBounds.Right <= window.ActualWidth,
                     "Support progress card overflowed the window.");
-                Assert(supportProgressBounds.Bottom <= window.ActualHeight - 56,
+                Assert(supportProgressBounds.Bottom <= window.ActualHeight - 64,
                     "Support progress card overlapped the footer.");
+                Assert(visibleSupportProgressCard.Background is SolidColorBrush supportBrush && supportBrush.Color.A == 255,
+                    "Support progress card must use an opaque theme surface.");
+
+                vm.SessionState.Workflow = DiscoveryWorkflowState.EndpointReachable;
+                vm.SessionState.ClearFailure();
+                vm.SessionState.BrowserLaunchResult = BrowserLaunchResult.Requested;
+                typeof(MainViewModel).GetMethod("NotifySessionStateChanged", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(vm, null);
+                visibleSupportProgressCard.Visibility = Visibility.Collapsed;
+                window.UpdateLayout();
+
+                window.Height = 580;
+                var contentScroller = (System.Windows.Controls.ScrollViewer)window.FindName("ContentScroller")
+                    ?? throw new InvalidOperationException("Content scroller was not found.");
+                contentScroller.ScrollToTop();
+                window.UpdateLayout();
+                var minimumOpenManagementPoint = openManagementButton!.TransformToAncestor(window).Transform(new Point(0, 0));
+                Assert(minimumOpenManagementPoint.Y + openManagementButton.ActualHeight <= window.ActualHeight - 64,
+                    "EndpointReachable primary action was not visible above the fixed footer at the minimum window height.");
+
+                window.Height = 660;
+                window.UpdateLayout();
+
+                typeof(MainViewModel).GetMethod("SetHistoryRetrySuggestion", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(vm, new object?[] { null });
+                vm.SessionState.ClearCandidateAddress();
+                vm.SessionState.Workflow = DiscoveryWorkflowState.Failed;
+                vm.SessionState.SetFailure(FailureKind.DhcpTimedOut, "firewall blocked test");
+                typeof(MainViewModel).GetMethod("SetCurrentFirewallRisk", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(vm, new object[] { FirewallRiskLevel.High });
+                notifySession.Invoke(vm, null);
+                contentScroller.ScrollToTop();
+                window.UpdateLayout();
+                var firewallButton = FindVisualChildren<System.Windows.Controls.Button>(modernRuntimeHost)
+                    .Single(b => b.IsVisible && b.Content is string title && title == "处理防火墙并准备重试");
+                var firewallPoint = firewallButton.TransformToAncestor(window).Transform(new Point(0, 0));
+                Assert(firewallPoint.Y + firewallButton.ActualHeight < window.ActualHeight - 64,
+                    "Firewall repair action must be reachable above the footer at default size.");
+                typeof(MainViewModel).GetMethod("SetFirewallRepairBusy", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(vm, new object[] { true });
+                window.UpdateLayout();
+                Assert(!firewallButton.IsEnabled && !vm.IsExitActionEnabled,
+                    "Repeated repair and exit must be disabled during firewall recovery.");
+                typeof(MainViewModel).GetMethod("SetFirewallRepairBusy", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(vm, new object[] { false });
+                window.UpdateLayout();
 
                 var dpi = VisualTreeHelper.GetDpi(window);
                 var bitmap = new RenderTargetBitmap(
@@ -923,5 +2322,74 @@ internal static class Program
         {
             Items.Add(value);
         }
+    }
+
+    private sealed class FixedEndpointNetworkEvidenceProvider : IEndpointNetworkEvidenceProvider
+    {
+        public int InterfaceIndex { get; set; } = 1;
+        public string NeighborMac { get; set; } = "6C-B3-11-26-AB-48";
+
+        public EndpointNetworkEvidence Inspect(BmcEndpointProbeRequest request)
+        {
+            return new EndpointNetworkEvidence
+            {
+                RouteResolved = true,
+                BestRouteInterfaceIndex = InterfaceIndex,
+                NeighborResolved = true,
+                NeighborMac = NeighborMac
+            };
+        }
+    }
+
+    private sealed class BlockingEndpointNetworkEvidenceProvider : IEndpointNetworkEvidenceProvider
+    {
+        private readonly int _delayMilliseconds;
+        private int _inFlight;
+
+        public BlockingEndpointNetworkEvidenceProvider(int delayMilliseconds)
+        {
+            _delayMilliseconds = delayMilliseconds;
+        }
+
+        public int LastInspectThreadId { get; private set; }
+        public int MaxInFlight { get; private set; }
+        public TaskCompletionSource<bool> Completed { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<bool> Started { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public EndpointNetworkEvidence Inspect(BmcEndpointProbeRequest request)
+        {
+            LastInspectThreadId = Thread.CurrentThread.ManagedThreadId;
+            var current = Interlocked.Increment(ref _inFlight);
+            Started.TrySetResult(true);
+            if (current > MaxInFlight)
+                MaxInFlight = current;
+            try
+            {
+                Thread.Sleep(_delayMilliseconds);
+                return new EndpointNetworkEvidence
+                {
+                    RouteResolved = true,
+                    BestRouteInterfaceIndex = request.InterfaceIndex,
+                    NeighborResolved = true,
+                    NeighborMac = "6C-B3-11-26-AB-48"
+                };
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _inFlight);
+                Completed.TrySetResult(true);
+            }
+        }
+    }
+
+    private sealed class ProbeDispatcherResult
+    {
+        public int DispatcherThreadId { get; set; }
+        public int ProviderThreadId { get; set; }
+        public int TimerTicks { get; set; }
+        public int MaxInFlight { get; set; }
+        public bool Faulted { get; set; }
     }
 }

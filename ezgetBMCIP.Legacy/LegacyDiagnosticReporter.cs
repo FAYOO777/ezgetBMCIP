@@ -51,6 +51,7 @@ namespace EzGetBmcIp.Legacy
                 ? "(not discovered)"
                 : viewModel.DiscoveredIpUrl);
             AppendLine(sb, "Endpoint status", viewModel.EndpointStatusText);
+            AppendLine(sb, "Endpoint verification", viewModel.EndpointVerificationDiagnosticText);
 
             AppendHeader(sb, "Selected adapter");
             var selected = viewModel.SelectedAdapterItem;
@@ -85,6 +86,13 @@ namespace EzGetBmcIp.Legacy
             await AppendCommandAsync(sb, "ipconfig /all", "ipconfig.exe", "/all");
             progress.Report(new SupportBundleProgress(30, "正在读取路由表..."));
             await AppendCommandAsync(sb, "route print", "route.exe", "print");
+            if (!string.IsNullOrWhiteSpace(viewModel.DiscoveredIp))
+                await AppendCommandAsync(sb, "Candidate address route", "route.exe", "print " + viewModel.DiscoveredIp);
+            progress.Report(new SupportBundleProgress(35, "正在读取邻居表和代理状态..."));
+            await AppendCommandAsync(sb, "ARP neighbor table", "arp.exe", "-a");
+            await AppendCommandAsync(sb, "WinHTTP proxy", "netsh.exe", "winhttp show proxy");
+            await AppendCommandAsync(sb, "WinINET proxy", "reg.exe", "query \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\" /v ProxyEnable");
+            await AppendCommandAsync(sb, "WinINET proxy server", "reg.exe", "query \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\" /v ProxyServer");
             progress.Report(new SupportBundleProgress(40, "正在检查 UDP 监听..."));
             await AppendCommandAsync(sb, "netstat UDP listeners", "netstat.exe", "-ano -p udp");
             progress.Report(new SupportBundleProgress(55, "正在检查 DHCP 服务..."));
@@ -106,7 +114,9 @@ namespace EzGetBmcIp.Legacy
                         selected.Name,
                         selected.Id,
                         selected.MacAddress,
-                        FirewallAssessmentService.GetCurrentExecutablePath());
+                        FirewallAssessmentService.GetCurrentExecutablePath(),
+                        viewModel.FirewallNetworkCategorySnapshot,
+                        System.Threading.CancellationToken.None);
                     sb.AppendLine(firewallAssessment.ToDiagnosticText());
                 }
                 catch (Exception ex)

@@ -4,6 +4,7 @@ using System.IO;
 using System.Reflection;
 using System.Security.Principal;
 using System.Windows;
+using System.Windows.Media;
 using Wpf.Ui.Appearance;
 
 namespace EzGetBmcIp;
@@ -53,8 +54,23 @@ public partial class App : Application
         }
 
         AppLogger.Log("Running as administrator");
-        ApplicationThemeManager.ApplySystemTheme();
+        ApplyApplicationAppearance();
         base.OnStartup(e);
+
+#if DHCP_OLD_LEASE_STUDY
+        try
+        {
+            DhcpOldLeaseStudy.EnsureConfigured();
+            AppLogger.Log("[TEST ONLY] DHCP old-lease study: " + DhcpOldLeaseStudy.DiagnosticText);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log("[TEST ONLY] DHCP old-lease study configuration rejected: " + ex.Message);
+            MessageBox.Show(ex.Message, "DHCP 旧 Lease 测试配置无效", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(1);
+            return;
+        }
+#endif
 
         var window = new MainWindow();
         MainWindow = window;
@@ -64,6 +80,28 @@ public partial class App : Application
     internal static bool ShouldCreateInteractiveWindow(string[] args)
     {
         return !NetworkRecoveryStore.TryParseWatchdogArguments(args, out _, out _);
+    }
+
+    internal static void ApplyApplicationAppearance()
+    {
+        var applicationTheme = ApplicationThemeManager.GetSystemTheme() == SystemTheme.Dark
+            ? ApplicationTheme.Dark
+            : ApplicationTheme.Light;
+        ApplicationThemeManager.Apply(
+            applicationTheme,
+            Wpf.Ui.Controls.WindowBackdropType.None,
+            updateAccent: false);
+
+        ApplyBrandAccent();
+    }
+
+    internal static void ApplyBrandAccent()
+    {
+        ApplicationAccentColorManager.Apply(
+            Color.FromRgb(0x00, 0x7A, 0xCC),
+            Color.FromRgb(0x00, 0x7A, 0xCC),
+            Color.FromRgb(0x16, 0x88, 0xD8),
+            Color.FromRgb(0x00, 0x6B, 0xB3));
     }
 
     private static void WireLogger()
