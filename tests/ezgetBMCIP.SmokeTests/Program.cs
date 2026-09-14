@@ -1956,12 +1956,12 @@ internal static class Program
                 vm.SessionState.Network = NetworkLifecycleState.TemporaryConfigurationActive;
                 typeof(MainViewModel).GetMethod("NotifySessionStateChanged", BindingFlags.Instance | BindingFlags.NonPublic)!
                     .Invoke(vm, null);
-                vm.EndpointStatusText = "IP 已分配，但 5 秒内尚未确认 Ping 或 TCP 80/443 可达。可以重新检测，或手动尝试 HTTPS / HTTP。";
+                vm.EndpointStatusText = "没有收到 Ping、HTTPS 或 HTTP 的成功响应。";
                 vm.AdapterCardLine1 = "测试网卡 - 直连 BMC 管理口";
                 vm.CurrentStepIndex = 3;
                 vm.BadgeState = StepState.Pending;
                 vm.BadgeText = "等待可达性";
-                vm.ActivityText = "DHCP 地址分配已完成，管理页面仍在启动或使用了其他端口。";
+                vm.ActivityText = "正在检查管理页面。";
                 typeof(MainViewModel).GetMethod("SetHistoryRetrySuggestion", BindingFlags.Instance | BindingFlags.NonPublic)!
                     .Invoke(vm, new object[] { new BmcHistoryRecord
                     {

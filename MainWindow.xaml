@@ -70,19 +70,9 @@
                                    Appearance="Secondary"
                                    Height="40" Padding="18,0" Margin="0,0,0,12" />
 
-                        <Expander Header="查看详情" FontSize="13">
-                            <StackPanel Margin="0,10,0,0">
-                                <TextBlock Text="{Binding FailureSummary}" FontSize="12" TextWrapping="Wrap"
-                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                <TextBlock Text="{Binding FailureTechnicalDetail}" FontSize="12" TextWrapping="Wrap"
-                                           Margin="0,8,0,0"
-                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                           Visibility="{Binding HasFailureTechnicalDetail, Converter={StaticResource BoolToVis}}" />
-                                <TextBlock Text="恢复记录会保留；后续启动工具时会再次尝试处理。"
-                                           FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"
-                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                            </StackPanel>
-                        </Expander>
+                        <TextBlock Text="{Binding RecoveryOriginalConfigDetails}" FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Margin="0,0,0,10" />
                     </StackPanel>
                 </Border>
 
@@ -127,17 +117,12 @@
                                        Command="{Binding CopyIpCommand}"
                                        Appearance="Secondary"
                                        Height="40" Padding="16,0" Margin="0,0,10,8" />
-                            <ui:Button Content="打开 HTTPS" Command="{Binding OpenHttpsCommand}"
-                                       Appearance="Secondary" Height="40" Padding="16,0" Margin="0,0,10,8" />
-                            <ui:Button Content="打开 HTTP" Command="{Binding OpenHttpCommand}"
-                                       Appearance="Secondary" Height="40" Padding="16,0" Margin="0,0,10,8" />
-                            <ui:Button Content="重新检测" Command="{Binding RetryEndpointCommand}"
-                                       Appearance="Secondary" Height="40" Padding="16,0" Margin="0,0,10,8" />
                         </WrapPanel>
 
                         <TextBlock Text="{Binding BrowserStatusText}" FontSize="12" TextWrapping="Wrap"
                                    Foreground="{Binding BrowserStatusSeverity, Converter={StaticResource SeverityToBrush}}"
-                                   Margin="0,0,0,14" />
+                                   Margin="0,0,0,14"
+                                   Visibility="{Binding ShowBrowserStatus, Converter={StaticResource BoolToVis}}" />
 
                         <Border Background="#FFF7E6" BorderBrush="#E4C07A" BorderThickness="1"
                                 CornerRadius="6" Padding="13,10" Margin="0,0,0,14"
@@ -183,17 +168,7 @@
                                        Height="40" Padding="18,0" Margin="0,0,10,8" />
                             <ui:Button Content="{Binding CopyButtonText}" Command="{Binding CopyIpCommand}"
                                        Appearance="Secondary" Height="40" Padding="16,0" Margin="0,0,10,8" />
-                            <ui:Button Content="打开 HTTPS" Command="{Binding OpenHttpsCommand}"
-                                       Appearance="Secondary" Height="40" Padding="16,0" Margin="0,0,10,8" />
-                            <ui:Button Content="打开 HTTP" Command="{Binding OpenHttpCommand}"
-                                       Appearance="Secondary" Height="40" Padding="16,0" Margin="0,0,10,8" />
                         </WrapPanel>
-
-                        <Expander Header="查看详情" FontSize="13">
-                             <TextBlock Text="已保留候选地址并完成 Ping/TCP 80/443 可达性检测；网页内容、状态码和非常用端口不在本次自动检测范围内。"
-                                       FontSize="12" TextWrapping="Wrap" Margin="0,10,0,0"
-                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                        </Expander>
                     </StackPanel>
                 </Border>
 
@@ -295,13 +270,6 @@
                             <StackPanel>
                                 <TextBlock Text="{Binding FirewallSummary}" FontSize="12" TextWrapping="Wrap"
                                            Foreground="{Binding FirewallSeverity, Converter={StaticResource SeverityToBrush}}" />
-                                <Expander Header="查看详情" FontSize="12" Margin="0,8,0,0"
-                                          Visibility="{Binding HasFirewallTechnicalDetail, Converter={StaticResource BoolToVis}}">
-                                    <TextBox Text="{Binding FirewallTechnicalDetail, Mode=OneWay}" IsReadOnly="True" BorderThickness="0"
-                                             Background="Transparent" FontFamily="Consolas, Courier New" FontSize="11"
-                                             TextWrapping="Wrap" AcceptsReturn="True" MaxHeight="140"
-                                             VerticalScrollBarVisibility="Auto" />
-                                </Expander>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -375,18 +343,6 @@
                                        Style="{StaticResource BrandPrimaryButtonStyle}"
                                        Height="40" Padding="18,0" />
                         </WrapPanel>
-                        <Expander Header="查看详情" FontSize="13">
-                            <StackPanel Margin="0,10,0,0">
-                                <TextBlock Text="{Binding FailureTechnicalDetail}" FontSize="12" TextWrapping="Wrap"
-                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                           Visibility="{Binding HasFailureTechnicalDetail, Converter={StaticResource BoolToVis}}" />
-                                <TextBox Text="{Binding FirewallTechnicalDetail, Mode=OneWay}" IsReadOnly="True" BorderThickness="0"
-                                         Background="Transparent" FontFamily="Consolas, Courier New" FontSize="11"
-                                         TextWrapping="Wrap" AcceptsReturn="True" MaxHeight="140" Margin="0,8,0,0"
-                                         VerticalScrollBarVisibility="Auto"
-                                         Visibility="{Binding HasFirewallTechnicalDetail, Converter={StaticResource BoolToVis}}" />
-                            </StackPanel>
-                        </Expander>
                     </StackPanel>
                 </Border>
 
@@ -418,34 +374,6 @@
                                        Appearance="Secondary" Height="40" Padding="18,0" Margin="0,0,10,8" />
                         </WrapPanel>
 
-                        <Expander Header="查看详情" FontSize="13">
-                            <StackPanel Margin="0,10,0,0">
-                                <TextBlock Text="{Binding FailureTechnicalDetail}" FontSize="12" TextWrapping="Wrap"
-                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                           Visibility="{Binding HasFailureTechnicalDetail, Converter={StaticResource BoolToVis}}" />
-                                <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"
-                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}">
-                                    <Run Text="当前网卡：" /><Run Text="{Binding CurrentAdapterName, Mode=OneWay}" />
-                                    <LineBreak />
-                                    <Run Text="临时本机地址：" /><Run Text="{Binding SubnetConfig.ServerDisplay, Mode=OneWay}" />
-                                </TextBlock>
-                                <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"
-                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                           Visibility="{Binding IsIpDiscovered, Converter={StaticResource BoolToVis}}">
-                                    <Run Text="候选地址：" /><Run Text="{Binding DiscoveredIp, Mode=OneWay}" />
-                                    <LineBreak />
-                                    <Run Text="{Binding CandidateSourceText, Mode=OneWay}" />
-                                </TextBlock>
-                                <TextBlock Text="{Binding FirewallSummary}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"
-                                           Foreground="{Binding FirewallSeverity, Converter={StaticResource SeverityToBrush}}"
-                                           Visibility="{Binding HasFirewallAssessment, Converter={StaticResource BoolToVis}}" />
-                                <TextBox Text="{Binding FirewallTechnicalDetail, Mode=OneWay}" IsReadOnly="True" BorderThickness="0"
-                                         Background="Transparent" FontFamily="Consolas, Courier New" FontSize="11"
-                                         TextWrapping="Wrap" AcceptsReturn="True" MaxHeight="140" Margin="0,8,0,0"
-                                         VerticalScrollBarVisibility="Auto"
-                                         Visibility="{Binding HasFirewallTechnicalDetail, Converter={StaticResource BoolToVis}}" />
-                            </StackPanel>
-                        </Expander>
                     </StackPanel>
                 </Border>
 
@@ -904,32 +832,21 @@
                                 <Expander Header="其他方式" FontSize="12" Margin="0,2,0,0"
                                           Visibility="{Binding ModernRuntime.ShowOtherEndpointActions, Converter={StaticResource BoolToVis}}">
                                     <WrapPanel Margin="0,8,0,0">
-                                        <ui:Button Content="打开 HTTPS" Command="{Binding OpenHttpsCommand}"
+                                        <ui:Button Content="改用 HTTP" Command="{Binding OpenHttpCommand}"
                                                    Appearance="Secondary" Height="36" Padding="14,0" Margin="0,0,8,8" />
-                                        <ui:Button Content="打开 HTTP" Command="{Binding OpenHttpCommand}"
-                                                   Appearance="Secondary" Height="36" Padding="14,0" Margin="0,0,8,8" />
-                                        <ui:Button Content="重新检测" Command="{Binding RetryEndpointCommand}"
-                                                   Appearance="Secondary" Height="36" Padding="14,0" Margin="0,0,8,8"
-                                                   Visibility="{Binding CurrentSessionPage, Converter={StaticResource PageToVis}, ConverterParameter=EndpointReachable}" />
                                     </WrapPanel>
                                 </Expander>
 
                                 <TextBlock Text="{Binding BrowserStatusText}" FontSize="12" TextWrapping="Wrap"
                                            Margin="0,2,0,0"
                                            Foreground="{Binding BrowserStatusSeverity, Converter={StaticResource SeverityToBrush}}"
-                                           Visibility="{Binding CurrentSessionPage, Converter={StaticResource PageToVis}, ConverterParameter=EndpointReachable}" />
+                                           Visibility="{Binding ShowBrowserStatus, Converter={StaticResource BoolToVis}}" />
 
                                 <TextBlock Text="{Binding FailureRecommendedActionText}" FontSize="13"
                                            TextWrapping="Wrap" Margin="0,8,0,0"
                                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                            Visibility="{Binding CurrentSessionPage, Converter={StaticResource PageToVis}, ConverterParameter=Failure}" />
 
-                                <Expander Header="查看诊断详情" FontSize="12" Margin="0,12,0,0"
-                                          Visibility="{Binding ModernRuntime.HasDetails, Converter={StaticResource BoolToVis}}">
-                                    <TextBlock Text="{Binding ModernRuntime.DetailsText}" FontSize="11"
-                                               TextWrapping="Wrap" Margin="0,8,0,0"
-                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                </Expander>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -1078,11 +995,6 @@
                                        Appearance="Secondary"
                                        Height="36" Padding="16,0" Margin="10,0,0,0" />
                         </StackPanel>
-                        <Expander Header="查看详情" FontSize="12" Margin="0,12,0,0">
-                            <TextBlock Text="选择后会先恢复本机网卡，再填入上次网段；不会自动开始下一轮，也不会修改 BMC。"
-                                       FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"
-                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                        </Expander>
                     </StackPanel>
                 </Border>
 

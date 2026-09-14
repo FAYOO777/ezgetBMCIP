@@ -1018,7 +1018,7 @@
                 <div class="tutorial-card">
                     <h2>使用教程</h2>
                     <p class="tutorial-lead">
-                        适用场景：笔记本用网线直连服务器的 IPMI/BMC 管理口。工具会临时接管你选择的本机网卡，给 BMC 分配临时 DHCP 地址；确认地址可达后，请求系统浏览器打开可用的 443/80 端口。
+                        适用场景：笔记本用网线直连服务器的 IPMI/BMC 管理口。工具会临时接管所选本机网卡，为 BMC 分配临时 DHCP 地址，并分别检查 Ping、HTTPS 和 HTTP；管理端口连接成功后请求系统浏览器打开对应地址。
                     </p>
                     <div class="tutorial-note">
                         开始前确认两件事：软件需要管理员权限；网线只能直连服务器的 IPMI/BMC 专用管理口，不要连接交换机、普通业务网口或已有局域网。工具退出时只恢复所选本机网卡，不会主动还原 BMC 网络设置。
@@ -1151,9 +1151,9 @@
                     <section class="tutorial-step">
                         <div>
                             <div class="step-kicker">Step 4</div>
-                            <h3>确认 BMC 地址可达并打开浏览器</h3>
+                            <h3>检查管理端口并打开页面</h3>
                             <p>
-                                BMC 获得临时地址后，工具会在最多约 5 秒内并行检测 Ping、TCP 443 和 TCP 80。地址可达即完成分配任务；若 443/80 可连接，工具会请求系统浏览器打开相应地址。网页是否最终加载、返回什么状态码或使用其他端口，不影响地址分配结果。
+                                BMC 获得临时地址后，工具会在最多约 5 秒内检查 Ping、HTTPS 和 HTTP。443 连接成功时打开 HTTPS；只有 80 连接成功时打开 HTTP；两个端口都成功时默认打开 HTTPS；只有 Ping 或两个端口都未连接时不显示管理页面按钮，可点击“重新检测”。
                             </p>
                             <p class="tutorial-warning">
                                 不要在浏览器中的 BMC 页面可用后直接拔线或关闭工具。先完成 BMC 操作，再回到工具执行恢复退出。
@@ -1164,7 +1164,7 @@
                                 <a class="tutorial-image-link" href="assets/tutorial/step-4-opening-bmc.png" target="_blank" rel="noopener">
                                     <img class="tutorial-shot" src="assets/tutorial/step-4-opening-bmc.png" alt="BMC 管理服务已响应，浏览器已被请求打开" loading="lazy" />
                                 </a>
-                                    <figcaption class="tutorial-caption">地址分配完成后，工具会确认地址可达；若 443/80 可连接则请求打开浏览器。</figcaption>
+                                    <figcaption class="tutorial-caption">管理端口连接成功后，工具请求系统浏览器打开对应地址。</figcaption>
                             </figure>
                         </div>
                     </section>
@@ -1174,7 +1174,7 @@
                             <div class="step-kicker">Step 5</div>
                             <h3>完成操作后，恢复本机网卡并退出</h3>
                             <p>
-                                BMC 页面确认可访问后，回到工具点击右下角“恢复网卡并退出”。工具会关闭内置 DHCP 服务，并恢复、验证使用前所选本机网卡的已记录 IPv4、网关和 DNS 设置。原 DHCP 网卡会重新自动获取租约，不保证回到相同地址；原静态网卡会写回已记录配置。
+                                完成 BMC 操作后，回到工具点击右下角“恢复网卡并退出”。工具会关闭内置 DHCP 服务，并恢复、验证使用前所选本机网卡的已记录 IPv4、网关和 DNS 设置。原 DHCP 网卡会重新自动获取租约，不保证回到相同地址；原静态网卡会写回已记录配置。
                             </p>
                             <ul>
                                 <li>请等待工具确认恢复完成并正常退出，再拔线或把本机网卡接回交换机、原网络。</li>
@@ -1185,7 +1185,7 @@
                         <div class="tutorial-gallery tutorial-gallery-single">
                             <figure class="tutorial-figure">
                                 <a class="tutorial-image-link" href="assets/tutorial/step-5-finish-restore.png" target="_blank" rel="noopener">
-                                    <img class="tutorial-shot" src="assets/tutorial/step-5-finish-restore.png" alt="已确认浏览器中的 BMC 页面可用，并显示恢复网卡并退出按钮" loading="lazy" />
+                                    <img class="tutorial-shot" src="assets/tutorial/step-5-finish-restore.png" alt="已请求打开管理地址，并显示恢复网卡并退出按钮" loading="lazy" />
                                 </a>
                                 <figcaption class="tutorial-caption">完成 BMC 操作后，点击右下角“恢复网卡并退出”。</figcaption>
                             </figure>

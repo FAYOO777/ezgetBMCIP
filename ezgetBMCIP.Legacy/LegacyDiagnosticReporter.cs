@@ -47,9 +47,7 @@ namespace EzGetBmcIp.Legacy
             AppendLine(sb, "Badge", viewModel.BadgeText);
             AppendLine(sb, "Subnet", viewModel.SubnetConfig.ServerDisplay);
             AppendLine(sb, "BMC pool address", viewModel.SubnetConfig.PoolDisplay);
-            AppendLine(sb, "Discovered URL", string.IsNullOrWhiteSpace(viewModel.DiscoveredIpUrl)
-                ? "(not discovered)"
-                : viewModel.DiscoveredIpUrl);
+            AppendLine(sb, "Discovered URL", GetDiscoveredAddressForReport(viewModel));
             AppendLine(sb, "Endpoint status", viewModel.EndpointStatusText);
             AppendLine(sb, "Endpoint verification", viewModel.EndpointVerificationDiagnosticText);
 
@@ -129,6 +127,15 @@ namespace EzGetBmcIp.Legacy
             await Task.Run(() => File.WriteAllText(reportPath, sb.ToString(), Utf8WithBom));
             App.LogSupport("Legacy diagnostics report written: " + reportPath);
             return reportPath;
+        }
+
+        private static string GetDiscoveredAddressForReport(MainViewModel viewModel)
+        {
+            if (!string.IsNullOrWhiteSpace(viewModel.DiscoveredIpUrl))
+                return viewModel.DiscoveredIpUrl;
+            if (!string.IsNullOrWhiteSpace(viewModel.DiscoveredIp))
+                return "(candidate IP) " + viewModel.DiscoveredIp;
+            return "(not discovered)";
         }
 
         private static void AppendHeader(StringBuilder sb, string title)

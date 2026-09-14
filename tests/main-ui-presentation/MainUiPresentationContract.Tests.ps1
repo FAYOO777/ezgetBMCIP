@@ -45,9 +45,10 @@ Assert-Contains $mainWindow 'or SessionPageKind.Ready' 'Returning to adapter sel
 
 Assert-Contains $xaml 'Command="{Binding ExitCommand}"' 'Restore page does not reuse the existing exit/retry command.'
 Assert-Contains $xaml 'Click="CollectSupportBundle_Click"' 'Restore page has no support-bundle action.'
-Assert-Contains $xaml 'Text="{Binding FailureTechnicalDetail}"' 'Restore details omit technical failure detail.'
+Assert-Contains $xaml 'Text="{Binding RecoveryOriginalConfigDetails}"' 'Restore page does not show original network configuration facts.'
 Assert-Contains $xaml 'Command="{Binding OpenManagementPageCommand}"' 'Reachable page has no preferred-scheme primary action.'
 Assert-Contains $xaml 'Text="{Binding BrowserStatusText}"' 'Reachable page does not show browser status.'
+Assert-Contains $xaml 'Visibility="{Binding ShowBrowserStatus, Converter={StaticResource BoolToVis}}"' 'Browser status visibility is not limited to an endpoint result.'
 Assert-True ($xaml.IndexOf('Content="打开管理页面"', [StringComparison]::Ordinal) -lt $xaml.IndexOf('Text="{Binding BrowserStatusText}"', [StringComparison]::Ordinal)) `
     'Reachable-page browser status appears before its primary management action.'
 Assert-Contains $xaml 'Text="{Binding CandidateSourceText}"' 'Result pages do not show candidate source.'
@@ -87,8 +88,9 @@ foreach ($needle in @(
     'private void StartDhcpElapsedTimer()',
     'private void StopDhcpElapsedTimer(bool reset)',
     'public ICommand OpenManagementPageCommand { get; }',
-    'SessionState.IsDiscoverySuccessful && IsPreferredManagementScheme',
+    'SessionState.IsDiscoverySuccessful && HasConnectedManagementPort',
     'public string BrowserStatusText =>',
+    'public bool ShowBrowserStatus =>',
     'public string CandidateSourceText =>',
     'public string NetworkStatusText =>',
     'public string ModernNetworkStatusText =>',
@@ -147,10 +149,12 @@ Assert-True (-not $mainWindowXaml.Contains('Opacity="0.96"')) 'Preflight overlay
 
 Assert-Contains $presentation 'case NetworkLifecycleState.RestoreFailed' 'Shared presentation no longer models RestoreFailed.'
 Assert-Contains $presentation 'case BrowserLaunchResult.RequestFailed' 'Shared presentation no longer models browser request failure.'
-Assert-Contains $presentation '地址可达结论不受影响' 'Browser failure copy incorrectly affects discovery success.'
+Assert-Contains $presentation '未能打开系统浏览器。' 'Browser failure copy is missing the browser request result.'
 Assert-Contains $presentation 'GetDhcpEvidencePresentation' 'Shared presentation lacks DHCP evidence wording.'
 Assert-Contains $presentation 'GetFailureRecommendedActionText' 'Shared presentation lacks FailureKind guidance.'
 Assert-Contains $presentation '当前防火墙配置存在兼容性风险，但尚不能确认它导致了本次等待。' 'Firewall Warning copy asserts or omits evidence strength.'
-Assert-Contains $presentation '候选管理地址尚未确认可达' 'EndpointUnreachable headline does not preserve the reachability conclusion.'
+Assert-Contains $presentation '设备地址没有回应' 'EndpointUnreachable headline does not describe the current result.'
+Assert-True (-not $xaml.Contains('查看诊断详情')) 'Modern runtime still renders a diagnostic details expander.'
+Assert-True (-not $xaml.Contains('ModernRuntime.HasDetails')) 'Modern runtime still binds removed diagnostic details.'
 
 Write-Output 'Main UI presentation contract tests passed.'

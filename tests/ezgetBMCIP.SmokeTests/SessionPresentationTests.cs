@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using System.Net;
 using EzGetBmcIp;
 
 internal static class SessionPresentationTests
@@ -25,6 +26,7 @@ internal static class SessionPresentationTests
         HistorySuggestionKeepsItsIdentityLimit();
         FirewallTextsKeepTheirEvidenceStrength();
         DhcpTimeoutFirewallActionsCoverRiskLevels();
+        ModernEndpointAccessModesUseConnectedPortOnly();
         FirewallNoticeProjectionTracksRiskAndFeedback();
         FirewallRepairProgressOverridesStaleTimeout();
     }
@@ -201,7 +203,7 @@ internal static class SessionPresentationTests
 
         var page = SessionPresentation.GetSessionPagePresentation(state, false, "https");
         Assert(page.Page == SessionPageKind.EndpointUnreachable
-               && page.Title == "候选管理地址尚未确认可达"
+               && page.Title == "设备地址没有回应"
                && page.RecommendedActionKind == PageActionKind.RetryEndpointProbe,
             "EndpointUnreachable was not kept separate from Failure.");
     }
@@ -248,8 +250,12 @@ internal static class SessionPresentationTests
         var browser = SessionPresentation.GetBrowserStatusPresentation(state.BrowserLaunchResult);
         Assert(state.IsDiscoverySuccessful,
             "Browser request failure invalidated discovery success.");
-        Assert(!browser.Text.Contains("发现失败") && browser.Text.Contains("地址可达结论不受影响"),
-            "Browser request failure text implied discovery failure.");
+        Assert(browser.Text == "未能打开系统浏览器。",
+            "Browser request failure text did not state the browser request result.");
+        Assert(SessionPresentation.GetBrowserStatusPresentation(BrowserLaunchResult.Requested).Text == "已交给系统浏览器打开。",
+            "Browser request success text did not state the browser request result.");
+        Assert(string.IsNullOrEmpty(SessionPresentation.GetBrowserStatusPresentation(BrowserLaunchResult.NotRequested).Text),
+            "Browser status should be hidden before a browser request.");
     }
 
     private static void NetworkLifecycleTextsMatchContract()
@@ -382,6 +388,53 @@ internal static class SessionPresentationTests
         };
         state.SetCandidateAddress("10.77.77.100", CandidateAddressSource.DhcpAck);
         return state;
+    }
+
+    private static void ModernEndpointAccessModesUseConnectedPortOnly()
+    {
+        var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        foreach (var testCase in new[]
+        {
+            new { Ping = false, Https = false, Http = false, Title = "设备地址没有回应", Action = ModernActionKind.RetryEndpoint, Address = "10.77.77.100" },
+            new { Ping = true, Https = false, Http = false, Title = "设备地址有回应", Action = ModernActionKind.RetryEndpoint, Address = "10.77.77.100" },
+            new { Ping = false, Https = true, Http = false, Title = "HTTPS 已连接", Action = ModernActionKind.OpenManagementPage, Address = "https://10.77.77.100" },
+            new { Ping = false, Https = false, Http = true, Title = "HTTP 已连接", Action = ModernActionKind.OpenManagementPage, Address = "http://10.77.77.100" },
+            new { Ping = true, Https = true, Http = true, Title = "HTTPS 和 HTTP 均已连接", Action = ModernActionKind.OpenManagementPage, Address = "https://10.77.77.100" }
+        })
+        {
+            var viewModel = new MainViewModel { AppPhase = AppPhase.FlowRunning };
+            viewModel.SessionState.Workflow = testCase.Ping || testCase.Https || testCase.Http
+                ? DiscoveryWorkflowState.EndpointReachable
+                : DiscoveryWorkflowState.EndpointUnreachable;
+            viewModel.SessionState.Network = NetworkLifecycleState.TemporaryConfigurationActive;
+            viewModel.SessionState.SetCandidateAddress("10.77.77.100", CandidateAddressSource.DhcpAck);
+            typeof(MainViewModel).GetField("_lastReachabilityResult", flags)!.SetValue(viewModel, new BmcReachabilityResult
+            {
+                TargetAddress = IPAddress.Parse("10.77.77.100"),
+                PingSucceeded = testCase.Ping,
+                HttpsPortOpen = testCase.Https,
+                HttpPortOpen = testCase.Http
+            });
+            typeof(MainViewModel).GetField("_preferredBmcScheme", flags)!.SetValue(
+                viewModel, testCase.Http && !testCase.Https ? "http" : "https");
+
+            var presentation = viewModel.ModernRuntime;
+            Assert(presentation.Title == testCase.Title && presentation.PrimaryAction == testCase.Action,
+                "Modern endpoint title or action mismatch for " + testCase.Title + ".");
+            Assert(presentation.PrimaryValue == testCase.Address,
+                "Modern endpoint address mismatch for " + testCase.Title + ".");
+            var expectedUrl = testCase.Https
+                ? "https://10.77.77.100"
+                : testCase.Http
+                    ? "http://10.77.77.100"
+                    : string.Empty;
+            Assert(viewModel.DiscoveredIpUrl == expectedUrl,
+                "A management URL was exposed before a TCP management port was confirmed for " + testCase.Title + ".");
+            Assert(testCase.Https && testCase.Http
+                ? presentation.ShowOtherEndpointActions
+                : !presentation.ShowOtherEndpointActions,
+                "Modern endpoint alternate actions were not limited to dual-port success.");
+        }
     }
 
     private static CurrentSessionState DhcpTimeoutState()

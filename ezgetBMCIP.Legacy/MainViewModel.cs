@@ -16,9 +16,12 @@ using EzGetBmcIp;
 
 namespace EzGetBmcIp.Legacy
 {
-    public sealed partial class MainViewModel : INotifyPropertyChanged, IRuntimePresentationSource
+    public sealed partial class MainViewModel : INotifyPropertyChanged, IRuntimePresentationSource, IRuntimeEndpointEvidence
     {
         int IRuntimePresentationSource.CurrentFirewallRepairStageValue => (int)CurrentFirewallRepairStage;
+        bool IRuntimeEndpointEvidence.EndpointPingSucceeded => _lastReachabilityResult != null && _lastReachabilityResult.PingSucceeded;
+        bool IRuntimeEndpointEvidence.EndpointHttpsPortOpen => _lastReachabilityResult != null && _lastReachabilityResult.HttpsPortOpen;
+        bool IRuntimeEndpointEvidence.EndpointHttpPortOpen => _lastReachabilityResult != null && _lastReachabilityResult.HttpPortOpen;
         private readonly SubnetConfig _subnetConfig = new SubnetConfig();
         private DhcpServer _dhcpServer;
         private CancellationTokenSource _flowCts;
@@ -157,6 +160,8 @@ namespace EzGetBmcIp.Legacy
 
         public string CandidateSourceText => SessionPresentation.GetCandidateSourceText(SessionState.CandidateAddress);
         public string BrowserStatusText => SessionPresentation.GetBrowserStatusPresentation(SessionState.BrowserLaunchResult).Text;
+        public bool HasBrowserStatus => !string.IsNullOrWhiteSpace(BrowserStatusText);
+        public bool ShowBrowserStatus => CurrentSessionPage == SessionPageKind.EndpointReachable && HasBrowserStatus;
         public PresentationSeverity BrowserStatusSeverity =>
             SessionPresentation.GetBrowserStatusPresentation(SessionState.BrowserLaunchResult).Severity;
         public string EndpointProtocolPortText => _lastReachabilityResult == null
@@ -174,18 +179,15 @@ namespace EzGetBmcIp.Legacy
                 var reachability = _lastReachabilityResult;
                 if (reachability != null)
                 {
-                    if (reachability.IsReachable)
-                    {
-                        var transport = reachability.HttpsPortOpen && reachability.HttpPortOpen
-                            ? "TCP 443、80"
-                            : reachability.HttpsPortOpen
-                                ? "TCP 443"
-                                : reachability.HttpPortOpen ? "TCP 80" : "Ping";
-                        return "地址已确认可达（" + transport + "）。" +
-                            (reachability.PingSucceeded ? string.Empty : "设备未响应 ICMP Ping。");
-                    }
-
-                    return "已取得候选地址，但 5 秒内未收到 Ping 或 TCP 80/443 的成功响应。";
+                    if (reachability.HttpsPortOpen && reachability.HttpPortOpen)
+                        return "HTTPS 和 HTTP 已连接。";
+                    if (reachability.HttpsPortOpen)
+                        return "HTTPS 已连接。";
+                    if (reachability.HttpPortOpen)
+                        return "HTTP 已连接。";
+                    if (reachability.PingSucceeded)
+                        return (DiscoveredIp ?? reachability.TargetAddress.ToString()) + " 可以 Ping 通。HTTPS 和 HTTP 未连接。";
+                    return "没有收到 Ping、HTTPS 或 HTTP 的成功响应。";
                 }
 
                 var evidence = _lastEndpointProbeEvidence;
@@ -193,16 +195,12 @@ namespace EzGetBmcIp.Legacy
                     return "尚未完成地址可达性检测。";
 
                 if (evidence.HttpResponseReceived && BmcEndpointProbe.IsAcceptedManagementHttpStatus(evidence.HttpStatusCode))
-                    return "兼容性严格探测曾从所选直连网卡收到 " + (evidence.TlsEstablished ? "HTTPS" : "HTTP") +
-                        " 响应：HTTP " + evidence.HttpStatusCode + "；邻居 MAC：" +
-                        (string.IsNullOrWhiteSpace(evidence.NeighborMac) ? "未记录" : evidence.NeighborMac) +
-                        "。当前成功判定以 Ping/TCP 可达性为准。";
+                    return "已收到 " + (evidence.TlsEstablished ? "HTTPS" : "HTTP") + " 响应。";
 
                 if (evidence.HttpResponseReceived)
-                    return "兼容性严格探测收到 HTTP " + evidence.HttpStatusCode +
-                        "；该网页响应不参与当前地址可达性判定。";
+                    return "已收到 HTTP 响应。";
 
-                return "兼容性严格探测未收到 HTTP/HTTPS 响应；当前地址可达性由 Ping/TCP 80/443 决定，最后阶段：" + evidence.FailureStage + "。";
+                return "未收到 HTTPS 或 HTTP 响应。";
             }
         }
 
@@ -377,7 +375,7 @@ namespace EzGetBmcIp.Legacy
             private set { _isEndpointProbeRunning = value; OnPropertyChanged(); }
         }
 
-        public string DiscoveredIpUrl => string.IsNullOrEmpty(DiscoveredIp)
+        public string DiscoveredIpUrl => !HasConnectedManagementPort || string.IsNullOrEmpty(DiscoveredIp)
             ? ""
             : PreferredBmcScheme + "://" + DiscoveredIp;
         public bool IsIpDiscovered => SessionState.HasCandidateAddress;
@@ -488,7 +486,7 @@ namespace EzGetBmcIp.Legacy
             CopyIpCommand = new RelayCommand(_ => CopyIp());
             OpenHttpsCommand = new RelayCommand(_ => OpenBrowserForScheme("https"));
             OpenHttpCommand = new RelayCommand(_ => OpenBrowserForScheme("http"));
-            OpenManagementPageCommand = new RelayCommand(_ => OpenBrowserForScheme(PreferredBmcScheme));
+            OpenManagementPageCommand = new RelayCommand(_ => OpenManagementPage());
             PrepareHistoryRetryCommand = new RelayCommand(async _ => await PrepareHistoryRetryAsync());
             ToggleAdvancedSubnetCommand = new RelayCommand(_ => IsAdvancedSubnetExpanded = !IsAdvancedSubnetExpanded);
             var _ = InitializeAsync();
@@ -1294,10 +1292,10 @@ namespace EzGetBmcIp.Legacy
             cancellationToken.ThrowIfCancellationRequested();
             IsEndpointProbeRunning = true;
             BeginEndpointProbe();
-            EndpointStatusText = "已取得候选管理地址，正在进行 Ping 和 TCP 80/443 可达性检测...";
-            StatusText = "已取得候选管理地址，正在确认可达性…";
-            DetailText = "地址：" + ipAddress + "；最长检测 5 秒，不读取网页内容。";
-            ActivityText = "正在并行检测 Ping、TCP 443 和 TCP 80。";
+            EndpointStatusText = "正在检查 Ping、HTTPS 和 HTTP 连接。";
+            StatusText = "正在检查管理页面…";
+            DetailText = "设备地址：" + ipAddress;
+            ActivityText = "正在检查 Ping、HTTPS 和 HTTP 连接。";
             BadgeText = "处理中";
             BadgeColor = "#0078D4";
 
@@ -1338,10 +1336,10 @@ namespace EzGetBmcIp.Legacy
             {
                 SetWorkflowState(DiscoveryWorkflowState.EndpointUnreachable);
                 PreferredBmcScheme = "https";
-                EndpointStatusText = "候选管理地址已保留，但暂未确认可达。";
-                StatusText = "已获取候选地址，尚未确认可达";
-                DetailText = "5 秒内未收到 Ping 或 TCP 80/443 的成功响应。地址仍会保留；可以重新检测，或手动尝试 HTTPS / HTTP。网页内容和状态码不会影响地址分配结果。";
-                ActivityText = "候选地址已保留，等待用户重新检测或手动访问。";
+                EndpointStatusText = "设备地址没有回应。";
+                StatusText = "设备地址没有回应";
+                DetailText = "没有收到 Ping、HTTPS 或 HTTP 的成功响应。";
+                ActivityText = "可以重新检测。";
                 BadgeText = "等待确认";
                 BadgeColor = "#8A6D1D";
                 return Task.FromResult(false);
@@ -1349,12 +1347,15 @@ namespace EzGetBmcIp.Legacy
 
             PreferredBmcScheme = reachability.PreferredScheme;
             SetWorkflowState(DiscoveryWorkflowState.EndpointReachable);
+            var hasManagementPort = reachability.HttpsPortOpen || reachability.HttpPortOpen;
             var transport = reachability.HttpsPortOpen && reachability.HttpPortOpen
-                ? "TCP 443、80"
+                ? "HTTPS 和 HTTP 已连接。"
                 : reachability.HttpsPortOpen
-                    ? "TCP 443"
-                    : reachability.HttpPortOpen ? "TCP 80" : "Ping";
-            EndpointStatusText = "地址已确认可达（" + transport + "）。";
+                    ? "HTTPS 已连接。"
+                    : reachability.HttpPortOpen
+                        ? "HTTP 已连接。"
+                        : (ipAddress + " 可以 Ping 通。HTTPS 和 HTTP 未连接。");
+            EndpointStatusText = transport;
             Log("BMC address reachable: ip=" + ipAddress +
                 " ping=" + reachability.PingSucceeded +
                 " tcp443=" + reachability.HttpsPortOpen +
@@ -1362,19 +1363,15 @@ namespace EzGetBmcIp.Legacy
             RememberReachableBmc(ipAddress, reachability);
             if (autoOpen && !string.IsNullOrWhiteSpace(reachability.PreferredUrl))
                 OpenBrowser(reachability.PreferredUrl);
-            StatusText = "地址已分配并确认可达";
-            var icmpDetail = reachability.PingSucceeded
-                ? string.Empty
-                : "设备未响应 ICMP Ping，但 TCP 握手成功，仍判定地址可达。 ";
-            var browserDetail = string.IsNullOrWhiteSpace(reachability.PreferredUrl)
-                ? icmpDetail + "80/443 暂无可连接端口；网页服务可能未启动或使用其他端口。可以稍后重新检测或手动尝试 HTTPS / HTTP。"
+            StatusText = transport.TrimEnd('。');
+            DetailText = !hasManagementPort
+                ? "可以重新检测。"
                 : SessionState.BrowserLaunchResult == BrowserLaunchResult.RequestFailed
-                    ? icmpDetail + "已确认地址可达，但浏览器启动请求失败；可以复制地址或手动打开。"
-                    : icmpDetail + "已确认地址可达，已请求浏览器打开 " + reachability.PreferredUrl + "。网页是否最终加载以浏览器实际显示为准。";
-            DetailText = browserDetail + " 完成后点击退出并恢复网卡。";
-            BadgeText = "已完成";
-            BadgeColor = "#107C10";
-            ActivityText = "地址已分配并确认可达；完成浏览器中的操作后恢复网卡。";
+                    ? "未能打开系统浏览器。"
+                    : "完成操作后恢复本机网卡并退出。";
+            BadgeText = hasManagementPort ? "已完成" : "等待确认";
+            BadgeColor = hasManagementPort ? "#107C10" : "#8A6D1D";
+            ActivityText = hasManagementPort ? "完成操作后恢复本机网卡。" : "可以重新检测。";
             return Task.FromResult(true);
         }
 
@@ -1385,6 +1382,14 @@ namespace EzGetBmcIp.Legacy
                 : SessionState.CandidateAddress.IPv4Address;
             if (!string.IsNullOrEmpty(candidateAddress))
                 OpenBrowser(scheme + "://" + candidateAddress);
+        }
+
+        private void OpenManagementPage()
+        {
+            if (!HasConnectedManagementPort)
+                return;
+
+            OpenBrowserForScheme(PreferredBmcScheme);
         }
 
         private void OpenBrowser(string url)
@@ -1412,12 +1417,12 @@ namespace EzGetBmcIp.Legacy
 
         private void CopyIp()
         {
-            if (string.IsNullOrWhiteSpace(DiscoveredIpUrl))
+            if (string.IsNullOrWhiteSpace(DiscoveredIp))
                 return;
 
             try
             {
-                Clipboard.SetText(DiscoveredIpUrl);
+                Clipboard.SetText(HasConnectedManagementPort ? DiscoveredIpUrl : DiscoveredIp);
                 Log("Candidate management URL copied to clipboard.");
             }
             catch (Exception ex)
@@ -1690,6 +1695,10 @@ namespace EzGetBmcIp.Legacy
             ?? _recoverySnapshot?.AdapterName
             ?? string.Empty;
 
+        private bool HasConnectedManagementPort =>
+            _lastReachabilityResult != null
+            && (_lastReachabilityResult.HttpsPortOpen || _lastReachabilityResult.HttpPortOpen);
+
         private void SetCurrentFirewallAssessment(FirewallAssessment assessment)
         {
             _firewallTechnicalDetail = assessment.ToDiagnosticText();
@@ -1832,6 +1841,8 @@ namespace EzGetBmcIp.Legacy
             OnPropertyChanged(nameof(NetworkStatusSeverity));
             OnPropertyChanged(nameof(CandidateSourceText));
             OnPropertyChanged(nameof(BrowserStatusText));
+            OnPropertyChanged(nameof(HasBrowserStatus));
+            OnPropertyChanged(nameof(ShowBrowserStatus));
             OnPropertyChanged(nameof(BrowserStatusSeverity));
             OnPropertyChanged(nameof(EndpointProtocolPortText));
             OnPropertyChanged(nameof(FirewallSummary));

@@ -63,6 +63,16 @@ public interface IRuntimePresentationSource
     string FirewallRepairFeedback { get; }
 }
 
+// Optional endpoint evidence is kept internal so the shared presentation can
+// distinguish Ping-only reachability from a connected management port without
+// expanding the public presentation contract.
+internal interface IRuntimeEndpointEvidence
+{
+    bool EndpointPingSucceeded { get; }
+    bool EndpointHttpsPortOpen { get; }
+    bool EndpointHttpPortOpen { get; }
+}
+
 /// <summary>
 /// The compact three-stage navigation shown by the modern runtime surface.
 /// This is presentation-only; it never drives the discovery or recovery state
@@ -109,6 +119,16 @@ public enum ModernActionKind
     PrepareHistoryRetry,
     RepairFirewall,
     ExportSupport
+}
+
+internal enum RuntimeEndpointAccessKind
+{
+    Unknown,
+    None,
+    PingOnly,
+    HttpsOnly,
+    HttpOnly,
+    HttpsAndHttp
 }
 
 public class ModernStageItem
@@ -178,8 +198,7 @@ public sealed class ModernRuntimePresentation
         IReadOnlyList<ModernStageItem> stages,
         IReadOnlyList<ModernInfoRow> facts,
         string noticeText,
-        PresentationSeverity noticeSeverity,
-        string detailsText)
+        PresentationSeverity noticeSeverity)
     {
         Page = page;
         Layout = layout;
@@ -201,7 +220,6 @@ public sealed class ModernRuntimePresentation
         Facts = facts;
         NoticeText = noticeText;
         NoticeSeverity = noticeSeverity;
-        DetailsText = detailsText;
     }
 
     public SessionPageKind Page { get; }
@@ -226,8 +244,6 @@ public sealed class ModernRuntimePresentation
     public string NoticeText { get; }
     public bool HasNotice => !string.IsNullOrWhiteSpace(NoticeText);
     public PresentationSeverity NoticeSeverity { get; }
-    public string DetailsText { get; }
-    public bool HasDetails => !string.IsNullOrWhiteSpace(DetailsText);
 
     internal static ModernRuntimePresentation From(IRuntimePresentationSource viewModel)
     {
@@ -236,15 +252,15 @@ public sealed class ModernRuntimePresentation
         var page = viewModel.IsFirewallRepairBusy
             ? SessionPageKind.FirewallRepairing
             : viewModel.CurrentSessionPage;
-        var stages = BuildStages(viewModel, page);
-        var facts = BuildFacts(viewModel, page);
-        var details = BuildDetails(viewModel, page);
+        var endpointAccess = GetEndpointAccess(viewModel, page);
+        var stages = BuildStages(viewModel, page, endpointAccess);
+        var facts = BuildFacts(viewModel, page, endpointAccess);
         var notice = BuildNotice(viewModel, page, out var noticeSeverity);
-        var title = GetTitle(viewModel, page);
-        var summary = GetSummary(viewModel, page);
+        var title = GetTitle(viewModel, page, endpointAccess);
+        var summary = GetSummary(viewModel, page, endpointAccess);
 
-        var severity = GetSeverity(page);
-        var layout = GetLayout(page);
+        var severity = GetSeverity(page, endpointAccess);
+        var layout = GetLayout(page, endpointAccess);
         var showRing = page == SessionPageKind.WaitingForLink
             || page == SessionPageKind.ConfiguringNetwork
             || page == SessionPageKind.ProbingEndpoint
@@ -255,12 +271,12 @@ public sealed class ModernRuntimePresentation
 
         var primaryAction = ModernActionKind.None;
         var secondaryAction = ModernActionKind.None;
-        if (page == SessionPageKind.EndpointReachable)
+        if (page == SessionPageKind.EndpointReachable && HasManagementPort(endpointAccess))
         {
             primaryAction = ModernActionKind.OpenManagementPage;
             secondaryAction = ModernActionKind.CopyAddress;
         }
-        else if (page == SessionPageKind.EndpointUnreachable)
+        else if (page == SessionPageKind.EndpointReachable || page == SessionPageKind.EndpointUnreachable)
         {
             primaryAction = ModernActionKind.RetryEndpoint;
             secondaryAction = ModernActionKind.CopyAddress;
@@ -316,12 +332,14 @@ public sealed class ModernRuntimePresentation
                 break;
             case SessionPageKind.ProbingEndpoint:
             case SessionPageKind.EndpointUnreachable:
-                primaryValueLabel = "候选地址";
+                primaryValueLabel = "设备地址";
                 primaryValue = viewModel.DiscoveredIp ?? string.Empty;
                 break;
             case SessionPageKind.EndpointReachable:
-                primaryValueLabel = "候选地址";
-                primaryValue = viewModel.DiscoveredIpUrl;
+                primaryValueLabel = HasManagementPort(endpointAccess) ? "管理地址" : "设备地址";
+                primaryValue = HasManagementPort(endpointAccess)
+                    ? viewModel.DiscoveredIpUrl
+                    : viewModel.DiscoveredIp ?? string.Empty;
                 break;
             case SessionPageKind.DhcpTimedOut:
                 primaryValueLabel = "等待时间";
@@ -333,7 +351,7 @@ public sealed class ModernRuntimePresentation
         {
             SessionPageKind.WaitingForLink => "等待检测到物理连接…",
             SessionPageKind.ConfiguringNetwork => viewModel.ActivityText,
-            SessionPageKind.ProbingEndpoint => "正在并行检查 Ping、TCP 443 和 TCP 80…",
+            SessionPageKind.ProbingEndpoint => "正在检查 Ping、HTTPS 和 HTTP…",
             SessionPageKind.Restoring => "正在写回使用工具前的网络配置…",
             SessionPageKind.FirewallRepairing => viewModel.FirewallRepairFeedback,
             _ => string.Empty
@@ -355,19 +373,19 @@ public sealed class ModernRuntimePresentation
             ShouldShowStageRail(page),
             primaryAction,
             secondaryAction,
-            page == SessionPageKind.EndpointReachable || page == SessionPageKind.EndpointUnreachable,
+            endpointAccess == RuntimeEndpointAccessKind.HttpsAndHttp,
             stages,
             facts,
             notice,
-            noticeSeverity,
-            details);
+            noticeSeverity);
     }
 
-    private static ModernRuntimeLayoutKind GetLayout(SessionPageKind page)
+    private static ModernRuntimeLayoutKind GetLayout(SessionPageKind page, RuntimeEndpointAccessKind endpointAccess)
     {
-        if (page == SessionPageKind.EndpointReachable)
+        if (page == SessionPageKind.EndpointReachable && HasManagementPort(endpointAccess))
             return ModernRuntimeLayoutKind.Success;
-        if (page == SessionPageKind.EndpointUnreachable
+        if (page == SessionPageKind.EndpointReachable
+            || page == SessionPageKind.EndpointUnreachable
             || page == SessionPageKind.DhcpTimedOut
             || page == SessionPageKind.HistoryRetrySuggestion)
             return ModernRuntimeLayoutKind.Attention;
@@ -378,34 +396,80 @@ public sealed class ModernRuntimePresentation
         return ModernRuntimeLayoutKind.Running;
     }
 
-    private static string GetTitle(IRuntimePresentationSource viewModel, SessionPageKind page) => page switch
+    private static string GetTitle(
+        IRuntimePresentationSource viewModel,
+        SessionPageKind page,
+        RuntimeEndpointAccessKind endpointAccess)
     {
-        SessionPageKind.WaitingForLink => "请连接服务器管理口",
-        SessionPageKind.ConfiguringNetwork => "正在配置直连网络",
-        SessionPageKind.WaitingForDhcp => "正在等待 BMC 获取地址",
-        SessionPageKind.ProbingEndpoint => "已获得候选地址，正在确认可达性",
-        SessionPageKind.EndpointReachable => "地址已分配并确认可达",
-        SessionPageKind.EndpointUnreachable => "已获得地址，但暂未确认可达",
-        SessionPageKind.DhcpTimedOut => "等待 DHCP 地址分配超时",
-        SessionPageKind.HistoryRetrySuggestion => "可以尝试上次使用的网段",
-        SessionPageKind.Restoring => "正在恢复本机网卡",
-        SessionPageKind.RestoreFailed => "本机网卡尚未确认恢复",
-        SessionPageKind.FirewallRepairing => "正在处理防火墙并准备重试",
-        SessionPageKind.Cancelled => "已停止当前流程",
-        SessionPageKind.Failure => viewModel.FailureTitle,
-        _ => viewModel.SessionPageTitle
-    };
+        if (page == SessionPageKind.EndpointReachable)
+        {
+            switch (endpointAccess)
+            {
+                case RuntimeEndpointAccessKind.HttpsOnly:
+                    return "HTTPS 已连接";
+                case RuntimeEndpointAccessKind.HttpOnly:
+                    return "HTTP 已连接";
+                case RuntimeEndpointAccessKind.HttpsAndHttp:
+                    return "HTTPS 和 HTTP 均已连接";
+                case RuntimeEndpointAccessKind.PingOnly:
+                    return "设备地址有回应";
+                case RuntimeEndpointAccessKind.None:
+                    return "设备地址没有回应";
+                case RuntimeEndpointAccessKind.Unknown:
+                    return "已找到设备地址";
+            }
+        }
 
-    private static string GetSummary(IRuntimePresentationSource viewModel, SessionPageKind page)
+        return page switch
+        {
+            SessionPageKind.WaitingForLink => "请连接服务器管理口",
+            SessionPageKind.ConfiguringNetwork => "正在配置直连网络",
+            SessionPageKind.WaitingForDhcp => "正在等待 BMC 获取地址",
+            SessionPageKind.ProbingEndpoint => "正在检查管理页面",
+            SessionPageKind.EndpointUnreachable => "设备地址没有回应",
+            SessionPageKind.DhcpTimedOut => "等待 DHCP 地址分配超时",
+            SessionPageKind.HistoryRetrySuggestion => "可以尝试上次使用的网段",
+            SessionPageKind.Restoring => "正在恢复本机网卡",
+            SessionPageKind.RestoreFailed => "本机网卡尚未确认恢复",
+            SessionPageKind.FirewallRepairing => "正在处理防火墙并准备重试",
+            SessionPageKind.Cancelled => "已停止当前流程",
+            SessionPageKind.Failure => viewModel.FailureTitle,
+            _ => viewModel.SessionPageTitle
+        };
+    }
+
+    private static string GetSummary(
+        IRuntimePresentationSource viewModel,
+        SessionPageKind page,
+        RuntimeEndpointAccessKind endpointAccess)
     {
+        if (page == SessionPageKind.EndpointReachable)
+        {
+            switch (endpointAccess)
+            {
+                case RuntimeEndpointAccessKind.PingOnly:
+                    return viewModel.DiscoveredIp + " 可以 Ping 通。HTTPS 和 HTTP 未连接。";
+                case RuntimeEndpointAccessKind.HttpsOnly:
+                    return "已连接 HTTPS 端口。";
+                case RuntimeEndpointAccessKind.HttpOnly:
+                    return "已连接 HTTP 端口。";
+                case RuntimeEndpointAccessKind.HttpsAndHttp:
+                    return "已选择 HTTPS。";
+                case RuntimeEndpointAccessKind.None:
+                    return "没有收到 Ping、HTTPS 或 HTTP 的成功响应。";
+                default:
+                    return "已找到设备地址。";
+            }
+        }
+
         return page switch
         {
             SessionPageKind.WaitingForLink => "将所选网卡直连 IPMI/BMC 管理口，检测到连接后会自动继续。",
             SessionPageKind.ConfiguringNetwork => "正在将所选网卡设置为 " + viewModel.SubnetConfig.ServerDisplay + "，并启动临时 DHCP。",
             SessionPageKind.WaitingForDhcp => "本机网卡已切换到临时直连配置，正在等待 BMC 发起 DHCP。",
-            SessionPageKind.ProbingEndpoint => "地址分配已完成，正在检查 Ping 与 TCP 80/443。",
-            SessionPageKind.EndpointReachable => "已确认候选地址可达；网页是否加载成功不影响地址分配结果。",
-            SessionPageKind.EndpointUnreachable => "候选地址仍会保留，可能需要重新检测，或 BMC 使用了其他端口。",
+            SessionPageKind.ProbingEndpoint => "正在检查 Ping、HTTPS 和 HTTP 连接。",
+            SessionPageKind.EndpointReachable => "已找到设备地址。",
+            SessionPageKind.EndpointUnreachable => "没有收到 Ping、HTTPS 或 HTTP 的成功响应。",
             SessionPageKind.DhcpTimedOut => "在 3 分钟内未观察到完成地址分配的 DHCP 流程。",
             SessionPageKind.HistoryRetrySuggestion => "本次 DHCP 等待已超时；该网卡曾在另一网段确认过地址可达。",
             SessionPageKind.Restoring => "正在恢复使用工具前的网络配置，请等待完成。",
@@ -417,11 +481,12 @@ public sealed class ModernRuntimePresentation
         };
     }
 
-    private static PresentationSeverity GetSeverity(SessionPageKind page)
+    private static PresentationSeverity GetSeverity(SessionPageKind page, RuntimeEndpointAccessKind endpointAccess)
     {
-        if (page == SessionPageKind.EndpointReachable)
+        if (page == SessionPageKind.EndpointReachable && HasManagementPort(endpointAccess))
             return PresentationSeverity.Success;
-        if (page == SessionPageKind.EndpointUnreachable
+        if (page == SessionPageKind.EndpointReachable
+            || page == SessionPageKind.EndpointUnreachable
             || page == SessionPageKind.DhcpTimedOut
             || page == SessionPageKind.HistoryRetrySuggestion)
             return PresentationSeverity.Warning;
@@ -459,7 +524,59 @@ public sealed class ModernRuntimePresentation
             || page == SessionPageKind.FirewallRepairing;
     }
 
-    private static IReadOnlyList<ModernStageItem> BuildStages(IRuntimePresentationSource viewModel, SessionPageKind page)
+    private static RuntimeEndpointAccessKind GetEndpointAccess(
+        IRuntimePresentationSource viewModel,
+        SessionPageKind page)
+    {
+        if (page != SessionPageKind.EndpointReachable
+            && page != SessionPageKind.EndpointUnreachable)
+            return RuntimeEndpointAccessKind.Unknown;
+
+        var evidence = viewModel as IRuntimeEndpointEvidence;
+        if (evidence == null)
+            return RuntimeEndpointAccessKind.Unknown;
+
+        if (evidence.EndpointHttpsPortOpen && evidence.EndpointHttpPortOpen)
+            return RuntimeEndpointAccessKind.HttpsAndHttp;
+        if (evidence.EndpointHttpsPortOpen)
+            return RuntimeEndpointAccessKind.HttpsOnly;
+        if (evidence.EndpointHttpPortOpen)
+            return RuntimeEndpointAccessKind.HttpOnly;
+        if (evidence.EndpointPingSucceeded)
+            return RuntimeEndpointAccessKind.PingOnly;
+        return RuntimeEndpointAccessKind.None;
+    }
+
+    private static bool HasManagementPort(RuntimeEndpointAccessKind endpointAccess)
+    {
+        return endpointAccess == RuntimeEndpointAccessKind.HttpsOnly
+            || endpointAccess == RuntimeEndpointAccessKind.HttpOnly
+            || endpointAccess == RuntimeEndpointAccessKind.HttpsAndHttp;
+    }
+
+    private static string GetEndpointConnectionText(RuntimeEndpointAccessKind endpointAccess)
+    {
+        switch (endpointAccess)
+        {
+            case RuntimeEndpointAccessKind.HttpsOnly:
+                return "HTTPS 已连接";
+            case RuntimeEndpointAccessKind.HttpOnly:
+                return "HTTP 已连接";
+            case RuntimeEndpointAccessKind.HttpsAndHttp:
+                return "HTTPS、HTTP 已连接";
+            case RuntimeEndpointAccessKind.PingOnly:
+                return "Ping 已连接；HTTPS、HTTP 未连接";
+            case RuntimeEndpointAccessKind.None:
+                return "Ping、HTTPS、HTTP 未连接";
+            default:
+                return "尚未完成检查";
+        }
+    }
+
+    private static IReadOnlyList<ModernStageItem> BuildStages(
+        IRuntimePresentationSource viewModel,
+        SessionPageKind page,
+        RuntimeEndpointAccessKind endpointAccess)
     {
         if (page == SessionPageKind.FirewallRepairing)
             return BuildFirewallRepairStages((RuntimeFirewallRepairStage)viewModel.CurrentFirewallRepairStageValue);
@@ -494,7 +611,9 @@ public sealed class ModernRuntimePresentation
         else if (page == SessionPageKind.EndpointReachable)
         {
             acquire = ModernStageState.Done;
-            verify = ModernStageState.Done;
+            verify = HasManagementPort(endpointAccess)
+                ? ModernStageState.Done
+                : ModernStageState.Attention;
         }
         else if (page == SessionPageKind.Failure)
         {
@@ -545,7 +664,10 @@ public sealed class ModernRuntimePresentation
         };
     }
 
-    private static IReadOnlyList<ModernInfoRow> BuildFacts(IRuntimePresentationSource viewModel, SessionPageKind page)
+    private static IReadOnlyList<ModernInfoRow> BuildFacts(
+        IRuntimePresentationSource viewModel,
+        SessionPageKind page,
+        RuntimeEndpointAccessKind endpointAccess)
     {
         var facts = new List<ModernInfoRow>();
         var adapter = viewModel.CurrentAdapterName;
@@ -571,17 +693,17 @@ public sealed class ModernRuntimePresentation
             case SessionPageKind.ProbingEndpoint:
                 facts.Add(new ModernInfoRow("网卡", adapter));
                 facts.Add(new ModernInfoRow("地址来源", viewModel.CandidateSourceText));
-                facts.Add(new ModernInfoRow("验证范围", "Ping · TCP 443 · TCP 80"));
+                facts.Add(new ModernInfoRow("验证范围", "Ping · HTTPS · HTTP"));
                 break;
             case SessionPageKind.EndpointReachable:
-                facts.Add(new ModernInfoRow("端口状态", viewModel.EndpointProtocolPortText));
-                facts.Add(new ModernInfoRow("验证结果", viewModel.EndpointVerificationText));
+                facts.Add(new ModernInfoRow("设备地址", viewModel.DiscoveredIp));
+                facts.Add(new ModernInfoRow("连接结果", GetEndpointConnectionText(endpointAccess)));
                 facts.Add(new ModernInfoRow("地址来源", viewModel.CandidateSourceText));
                 break;
             case SessionPageKind.EndpointUnreachable:
+                facts.Add(new ModernInfoRow("设备地址", viewModel.DiscoveredIp));
+                facts.Add(new ModernInfoRow("连接结果", GetEndpointConnectionText(endpointAccess)));
                 facts.Add(new ModernInfoRow("地址来源", viewModel.CandidateSourceText));
-                facts.Add(new ModernInfoRow("验证结果", viewModel.EndpointVerificationText));
-                facts.Add(new ModernInfoRow("当前网卡", adapter));
                 break;
             case SessionPageKind.DhcpTimedOut:
                 facts.Add(new ModernInfoRow("网卡", adapter));
@@ -603,6 +725,9 @@ public sealed class ModernRuntimePresentation
             case SessionPageKind.RestoreFailed:
                 facts.Add(new ModernInfoRow("网卡", viewModel.RecoveryAdapterDisplayName));
                 facts.Add(new ModernInfoRow("恢复目标", "使用工具前的 IPv4 和 DNS 配置"));
+                if (page == SessionPageKind.RestoreFailed
+                    && !string.IsNullOrWhiteSpace(viewModel.RecoveryOriginalConfigDetails))
+                    facts.Add(new ModernInfoRow("原网络配置", viewModel.RecoveryOriginalConfigDetails));
                 break;
             case SessionPageKind.FirewallRepairing:
                 facts.Add(new ModernInfoRow("目标网卡", adapter));
@@ -667,59 +792,6 @@ public sealed class ModernRuntimePresentation
         }
 
         return string.Empty;
-    }
-
-    private static string BuildDetails(IRuntimePresentationSource viewModel, SessionPageKind page)
-    {
-        var lines = new List<string>();
-        switch (page)
-        {
-            case SessionPageKind.WaitingForDhcp:
-                lines.Add("DHCP 证据：" + viewModel.DhcpEvidenceText);
-                if (viewModel.HasFirewallTechnicalDetail)
-                    lines.Add("防火墙详情：\n" + viewModel.FirewallTechnicalDetail);
-                break;
-            case SessionPageKind.ProbingEndpoint:
-            case SessionPageKind.EndpointUnreachable:
-            case SessionPageKind.EndpointReachable:
-                lines.Add(viewModel.EndpointVerificationDiagnosticText);
-                break;
-            case SessionPageKind.DhcpTimedOut:
-                lines.Add("未在最长等待时间内完成地址分配流程。");
-                if (viewModel.HasFailureTechnicalDetail)
-                    lines.Add(viewModel.FailureTechnicalDetail);
-                if (viewModel.HasFirewallTechnicalDetail)
-                    lines.Add("防火墙详情：\n" + viewModel.FirewallTechnicalDetail);
-                break;
-            case SessionPageKind.HistoryRetrySuggestion:
-                lines.Add(viewModel.HistoryRetrySuggestionText);
-                lines.Add("上次可达性证据：" + viewModel.HistoryEndpointText);
-                lines.Add("上次确认时间：" + viewModel.HistoryLastConfirmedText);
-                lines.Add("选择后会先恢复本机网卡，再填入上次网段；不会自动开始下一轮，也不会修改 BMC。");
-                break;
-            case SessionPageKind.Failure:
-                if (viewModel.HasFailureTechnicalDetail)
-                    lines.Add(viewModel.FailureTechnicalDetail);
-                if (viewModel.HasFirewallTechnicalDetail)
-                    lines.Add("防火墙详情：\n" + viewModel.FirewallTechnicalDetail);
-                break;
-            case SessionPageKind.RestoreFailed:
-                if (!string.IsNullOrWhiteSpace(viewModel.RecoveryOriginalConfigDetails))
-                    lines.Add(viewModel.RecoveryOriginalConfigDetails);
-                if (viewModel.HasFailureTechnicalDetail)
-                    lines.Add(viewModel.FailureTechnicalDetail);
-                lines.Add("恢复记录会保留；后续启动工具时会再次尝试处理。");
-                break;
-            case SessionPageKind.ConfiguringNetwork:
-                if (!string.IsNullOrWhiteSpace(viewModel.ActivityText))
-                    lines.Add(viewModel.ActivityText);
-                break;
-            case SessionPageKind.FirewallRepairing:
-                lines.Add("处理期间不会自动开始下一轮测试，也不会修改 BMC 配置。");
-                break;
-        }
-
-        return string.Join("\n\n", lines);
     }
 
     private static double ParseElapsed(string value)

@@ -197,11 +197,11 @@ namespace EzGetBmcIp
                 case SessionPageKind.WaitingForDhcp:
                     return Page(page, "正在等待设备请求 DHCP 地址", "本机网卡已切换到临时直连配置，正在等待设备发起 DHCP。", PageActionKind.None);
                 case SessionPageKind.ProbingEndpoint:
-                    return Page(page, "正在确认地址可达性", "已取得候选管理地址，正在并行检测 Ping、TCP 443 和 TCP 80；不读取网页内容。", PageActionKind.None);
+                    return Page(page, "正在检查管理页面", "正在检查 Ping、HTTPS 和 HTTP 连接。", PageActionKind.None);
                 case SessionPageKind.EndpointReachable:
-                    return Page(page, "候选管理地址已确认可达", GetEndpointReachableSummary(preferredBmcScheme), PageActionKind.OpenManagementPage);
+                    return Page(page, "已找到设备地址", GetEndpointReachableSummary(preferredBmcScheme), PageActionKind.OpenManagementPage);
                 case SessionPageKind.EndpointUnreachable:
-                    return Page(page, "候选管理地址尚未确认可达", "已取得候选管理地址，但暂未收到 Ping 或 TCP 80/443 的成功响应；地址仍会保留。", PageActionKind.RetryEndpointProbe);
+                    return Page(page, "设备地址没有回应", "没有收到 Ping、HTTPS 或 HTTP 的成功响应。", PageActionKind.RetryEndpointProbe);
                 case SessionPageKind.DhcpTimedOut:
                     return Page(page, "等待 DHCP 地址分配超时", "在 3 分钟内未观察到完成地址分配的 DHCP 流程。", PageActionKind.ExportSupportBundle);
                 case SessionPageKind.HistoryRetrySuggestion:
@@ -281,12 +281,12 @@ namespace EzGetBmcIp
             switch (browserLaunchResult)
             {
                 case BrowserLaunchResult.Requested:
-                    return new BrowserStatusPresentation("已请求系统打开默认浏览器；未验证网页是否加载。若浏览器打不开该地址，请检查代理/VPN 或为本次直连网段设置绕过。", PresentationSeverity.Normal);
+                    return new BrowserStatusPresentation("已交给系统浏览器打开。", PresentationSeverity.Normal);
                 case BrowserLaunchResult.RequestFailed:
-                    return new BrowserStatusPresentation("未能请求系统打开浏览器；地址可达结论不受影响。", PresentationSeverity.Warning);
+                    return new BrowserStatusPresentation("未能打开系统浏览器。", PresentationSeverity.Warning);
                 case BrowserLaunchResult.NotRequested:
                 default:
-                    return new BrowserStatusPresentation("尚未请求打开浏览器。", PresentationSeverity.Normal);
+                    return new BrowserStatusPresentation(string.Empty, PresentationSeverity.Normal);
             }
         }
 
@@ -469,10 +469,7 @@ namespace EzGetBmcIp
 
         private static string GetEndpointReachableSummary(string? preferredBmcScheme)
         {
-            return "已确认候选地址可达；" +
-                (string.Equals(preferredBmcScheme, "http", StringComparison.OrdinalIgnoreCase)
-                    ? "如端口可连接，将使用 HTTP 打开浏览器。"
-                    : "如端口可连接，将优先使用 HTTPS 打开浏览器。");
+            return "已找到设备地址。";
         }
 
         private static string GetCancelledSummary(NetworkLifecycleState network)

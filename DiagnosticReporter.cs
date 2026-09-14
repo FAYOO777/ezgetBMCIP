@@ -50,7 +50,7 @@ internal static class DiagnosticReporter
         AppendLine(sb, "Subnet", viewModel.SubnetConfig.ServerDisplay);
         AppendLine(sb, "BMC pool address", viewModel.SubnetConfig.PoolDisplay);
         AppendLine(sb, "DHCP listener", viewModel.DhcpListenerStatus);
-        AppendLine(sb, "Discovered URL", viewModel.IsIpDiscovered ? viewModel.DiscoveredIpUrl : "(not discovered)");
+        AppendLine(sb, "Discovered URL", GetDiscoveredAddressForReport(viewModel, "(not discovered)"));
         AppendLine(sb, "Endpoint status", viewModel.EndpointStatusText);
         AppendLine(sb, "Endpoint verification", viewModel.EndpointVerificationDiagnosticText);
 
@@ -156,8 +156,17 @@ internal static class DiagnosticReporter
         AppendLine(sb, "Subnet validation", viewModel.SubnetConfig.IsPrivateSubnet
             ? "OK"
             : "INVALID - " + viewModel.SubnetConfig.ValidationError);
-        AppendLine(sb, "BMC URL", viewModel.IsIpDiscovered ? viewModel.DiscoveredIpUrl : "(not discovered yet)");
+        AppendLine(sb, "BMC URL", GetDiscoveredAddressForReport(viewModel, "(not discovered yet)"));
         AppendLine(sb, "UDP 67", await GetUdp67SummaryAsync());
+    }
+
+    private static string GetDiscoveredAddressForReport(MainViewModel viewModel, string emptyValue)
+    {
+        if (!string.IsNullOrWhiteSpace(viewModel.DiscoveredIpUrl))
+            return viewModel.DiscoveredIpUrl;
+        if (!string.IsNullOrWhiteSpace(viewModel.DiscoveredIp))
+            return "(candidate IP) " + viewModel.DiscoveredIp;
+        return emptyValue;
     }
 
     private static async Task AppendCommandAsync(

@@ -46,9 +46,11 @@ foreach ($property in @('HistoryAdapterName', 'HistoryLocalAddress', 'HistoryBmc
     Assert-Contains $legacyVm "public string $property" "Legacy ViewModel omits history fact $property."
 }
 
-foreach ($copy in @('显式防火墙阻止规则', '尚不能确认它导致了本次等待', '未发现明显的防火墙阻断证据', '无法完整评估当前防火墙配置', '地址可达结论不受影响')) {
+foreach ($copy in @('显式防火墙阻止规则', '尚不能确认它导致了本次等待', '未发现明显的防火墙阻断证据', '无法完整评估当前防火墙配置')) {
     Assert-Contains $presentation $copy 'Shared evidence wording regressed.'
 }
+Assert-Contains $presentation '未能打开系统浏览器。' 'Shared browser status wording is missing.'
+Assert-True (-not $presentation.Contains('地址可达结论不受影响')) 'Shared presentation retains obsolete browser wording.'
 Assert-Contains $runtime 'public interface IRuntimePresentationSource' 'Runtime projection is not shared.'
 Assert-True (-not $runtime.Contains('namespace EzGetBmcIp;')) 'Shared runtime projection is not C# 8 compatible.'
 
