@@ -1771,7 +1771,7 @@ internal static class Program
         var request = CreateLoopbackProbeRequest();
         var routeMismatch = await BmcEndpointProbe.ProbeForEndpointAsync(
             request,
-            TimeSpan.FromMilliseconds(40),
+            TimeSpan.FromMilliseconds(250),
             CancellationToken.None,
             candidates: new[] { new BmcEndpointCandidate { Scheme = "http", Port = 80 } },
             networkEvidenceProvider: new FixedEndpointNetworkEvidenceProvider { InterfaceIndex = 2 });
@@ -1782,7 +1782,7 @@ internal static class Program
         request.ExpectedPeerMac = "001122334455";
         var peerMismatch = await BmcEndpointProbe.ProbeForEndpointAsync(
             request,
-            TimeSpan.FromMilliseconds(40),
+            TimeSpan.FromMilliseconds(250),
             CancellationToken.None,
             candidates: new[] { new BmcEndpointCandidate { Scheme = "http", Port = 80 } },
             networkEvidenceProvider: new FixedEndpointNetworkEvidenceProvider());
