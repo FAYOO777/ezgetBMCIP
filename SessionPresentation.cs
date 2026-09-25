@@ -197,11 +197,11 @@ namespace EzGetBmcIp
                 case SessionPageKind.WaitingForDhcp:
                     return Page(page, "正在等待设备请求 DHCP 地址", "本机网卡已切换到临时直连配置，正在等待设备发起 DHCP。", PageActionKind.None);
                 case SessionPageKind.ProbingEndpoint:
-                    return Page(page, "正在检查管理页面", "正在检查 Ping、HTTPS 和 HTTP 连接。", PageActionKind.None);
+                    return Page(page, "正在检查管理页面", "正在检查 Ping、TCP 443 和 TCP 80。", PageActionKind.None);
                 case SessionPageKind.EndpointReachable:
                     return Page(page, "已找到设备地址", GetEndpointReachableSummary(preferredBmcScheme), PageActionKind.OpenManagementPage);
                 case SessionPageKind.EndpointUnreachable:
-                    return Page(page, "设备地址没有回应", "没有收到 Ping、HTTPS 或 HTTP 的成功响应。", PageActionKind.RetryEndpointProbe);
+                    return Page(page, "设备地址没有回应", "没有收到 Ping、TCP 443 或 TCP 80 的成功响应。", PageActionKind.RetryEndpointProbe);
                 case SessionPageKind.DhcpTimedOut:
                     return Page(page, "等待 DHCP 地址分配超时", "在 3 分钟内未观察到完成地址分配的 DHCP 流程。", PageActionKind.ExportSupportBundle);
                 case SessionPageKind.HistoryRetrySuggestion:

@@ -30,6 +30,10 @@ foreach ($xaml in @($mainXaml, $legacyXaml)) {
     }
     Assert-Contains $xaml 'Text="{Binding BrowserStatusText}"' 'Browser request status is not shown separately from discovery.'
     Assert-Contains $xaml 'Content="使用上次网段重试"' 'History retry primary action text differs from the shared contract.'
+    Assert-Contains $xaml 'Content="尝试 HTTPS"' 'An HTTP-only result has no HTTPS fallback action.'
+    Assert-Contains $xaml 'ShowHttpsFallbackAction' 'The HTTPS fallback action is not gated by shared endpoint evidence.'
+    Assert-Contains $xaml 'Content="改用 HTTP"' 'A dual-port result has no HTTP alternate action.'
+    Assert-Contains $xaml 'ShowHttpFallbackAction' 'The HTTP alternate action is not gated by shared endpoint evidence.'
     Assert-True (-not $xaml.Contains('没有收到 DHCP 请求')) 'A UI claims unsupported DHCP request-observation evidence.'
 }
 
@@ -52,6 +56,8 @@ foreach ($copy in @('显式防火墙阻止规则', '尚不能确认它导致了�
 Assert-Contains $presentation '未能打开系统浏览器。' 'Shared browser status wording is missing.'
 Assert-True (-not $presentation.Contains('地址可达结论不受影响')) 'Shared presentation retains obsolete browser wording.'
 Assert-Contains $runtime 'public interface IRuntimePresentationSource' 'Runtime projection is not shared.'
+Assert-Contains $runtime 'public bool ShowHttpsFallbackAction' 'Shared runtime projection omits the HTTPS fallback state.'
+Assert-Contains $runtime 'public bool ShowHttpFallbackAction' 'Shared runtime projection omits the HTTP alternate state.'
 Assert-True (-not $runtime.Contains('namespace EzGetBmcIp;')) 'Shared runtime projection is not C# 8 compatible.'
 
 Write-Output 'Main/Legacy UI parity contract tests passed.'

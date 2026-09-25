@@ -194,7 +194,8 @@ public sealed class ModernRuntimePresentation
         bool showStageRail,
         ModernActionKind primaryAction,
         ModernActionKind secondaryAction,
-        bool showOtherEndpointActions,
+        bool showHttpsFallbackAction,
+        bool showHttpFallbackAction,
         IReadOnlyList<ModernStageItem> stages,
         IReadOnlyList<ModernInfoRow> facts,
         string noticeText,
@@ -215,7 +216,8 @@ public sealed class ModernRuntimePresentation
         ShowStageRail = showStageRail;
         PrimaryAction = primaryAction;
         SecondaryAction = secondaryAction;
-        ShowOtherEndpointActions = showOtherEndpointActions;
+        ShowHttpsFallbackAction = showHttpsFallbackAction;
+        ShowHttpFallbackAction = showHttpFallbackAction;
         Stages = stages;
         Facts = facts;
         NoticeText = noticeText;
@@ -238,7 +240,9 @@ public sealed class ModernRuntimePresentation
     public bool ShowStageRail { get; }
     public ModernActionKind PrimaryAction { get; }
     public ModernActionKind SecondaryAction { get; }
-    public bool ShowOtherEndpointActions { get; }
+    public bool ShowHttpsFallbackAction { get; }
+    public bool ShowHttpFallbackAction { get; }
+    public bool ShowOtherEndpointActions => ShowHttpsFallbackAction || ShowHttpFallbackAction;
     public IReadOnlyList<ModernStageItem> Stages { get; }
     public IReadOnlyList<ModernInfoRow> Facts { get; }
     public string NoticeText { get; }
@@ -351,7 +355,7 @@ public sealed class ModernRuntimePresentation
         {
             SessionPageKind.WaitingForLink => "等待检测到物理连接…",
             SessionPageKind.ConfiguringNetwork => viewModel.ActivityText,
-            SessionPageKind.ProbingEndpoint => "正在检查 Ping、HTTPS 和 HTTP…",
+            SessionPageKind.ProbingEndpoint => "正在检查 Ping、TCP 443 和 TCP 80…",
             SessionPageKind.Restoring => "正在写回使用工具前的网络配置…",
             SessionPageKind.FirewallRepairing => viewModel.FirewallRepairFeedback,
             _ => string.Empty
@@ -373,6 +377,7 @@ public sealed class ModernRuntimePresentation
             ShouldShowStageRail(page),
             primaryAction,
             secondaryAction,
+            endpointAccess == RuntimeEndpointAccessKind.HttpOnly,
             endpointAccess == RuntimeEndpointAccessKind.HttpsAndHttp,
             stages,
             facts,
@@ -406,11 +411,11 @@ public sealed class ModernRuntimePresentation
             switch (endpointAccess)
             {
                 case RuntimeEndpointAccessKind.HttpsOnly:
-                    return "HTTPS 已连接";
+                    return "TCP 443 端口可连接";
                 case RuntimeEndpointAccessKind.HttpOnly:
-                    return "HTTP 已连接";
+                    return "TCP 80 端口可连接";
                 case RuntimeEndpointAccessKind.HttpsAndHttp:
-                    return "HTTPS 和 HTTP 均已连接";
+                    return "TCP 443、80 端口均可连接";
                 case RuntimeEndpointAccessKind.PingOnly:
                     return "设备地址有回应";
                 case RuntimeEndpointAccessKind.None:
@@ -448,15 +453,15 @@ public sealed class ModernRuntimePresentation
             switch (endpointAccess)
             {
                 case RuntimeEndpointAccessKind.PingOnly:
-                    return viewModel.DiscoveredIp + " 可以 Ping 通。HTTPS 和 HTTP 未连接。";
+                    return viewModel.DiscoveredIp + " 可以 Ping 通。TCP 443 和 TCP 80 未连接。";
                 case RuntimeEndpointAccessKind.HttpsOnly:
-                    return "已连接 HTTPS 端口。";
+                    return "TCP 443 端口可连接，将优先使用 HTTPS。";
                 case RuntimeEndpointAccessKind.HttpOnly:
-                    return "已连接 HTTP 端口。";
+                    return "TCP 80 端口可连接，将使用 HTTP。";
                 case RuntimeEndpointAccessKind.HttpsAndHttp:
-                    return "已选择 HTTPS。";
+                    return "两个管理端口均可连接，将优先使用 HTTPS。";
                 case RuntimeEndpointAccessKind.None:
-                    return "没有收到 Ping、HTTPS 或 HTTP 的成功响应。";
+                    return "没有收到 Ping、TCP 443 或 TCP 80 的成功响应。";
                 default:
                     return "已找到设备地址。";
             }
@@ -467,9 +472,9 @@ public sealed class ModernRuntimePresentation
             SessionPageKind.WaitingForLink => "将所选网卡直连 IPMI/BMC 管理口，检测到连接后会自动继续。",
             SessionPageKind.ConfiguringNetwork => "正在将所选网卡设置为 " + viewModel.SubnetConfig.ServerDisplay + "，并启动临时 DHCP。",
             SessionPageKind.WaitingForDhcp => "本机网卡已切换到临时直连配置，正在等待 BMC 发起 DHCP。",
-            SessionPageKind.ProbingEndpoint => "正在检查 Ping、HTTPS 和 HTTP 连接。",
+            SessionPageKind.ProbingEndpoint => "正在检查 Ping、TCP 443 和 TCP 80。",
             SessionPageKind.EndpointReachable => "已找到设备地址。",
-            SessionPageKind.EndpointUnreachable => "没有收到 Ping、HTTPS 或 HTTP 的成功响应。",
+            SessionPageKind.EndpointUnreachable => "没有收到 Ping、TCP 443 或 TCP 80 的成功响应。",
             SessionPageKind.DhcpTimedOut => "在 3 分钟内未观察到完成地址分配的 DHCP 流程。",
             SessionPageKind.HistoryRetrySuggestion => "本次 DHCP 等待已超时；该网卡曾在另一网段确认过地址可达。",
             SessionPageKind.Restoring => "正在恢复使用工具前的网络配置，请等待完成。",
@@ -559,15 +564,15 @@ public sealed class ModernRuntimePresentation
         switch (endpointAccess)
         {
             case RuntimeEndpointAccessKind.HttpsOnly:
-                return "HTTPS 已连接";
+                return "TCP 443 端口可连接";
             case RuntimeEndpointAccessKind.HttpOnly:
-                return "HTTP 已连接";
+                return "TCP 80 端口可连接";
             case RuntimeEndpointAccessKind.HttpsAndHttp:
-                return "HTTPS、HTTP 已连接";
+                return "TCP 443、80 端口均可连接";
             case RuntimeEndpointAccessKind.PingOnly:
-                return "Ping 已连接；HTTPS、HTTP 未连接";
+                return "Ping 有回应；TCP 443、80 未连接";
             case RuntimeEndpointAccessKind.None:
-                return "Ping、HTTPS、HTTP 未连接";
+                return "Ping、TCP 443、80 均无回应";
             default:
                 return "尚未完成检查";
         }
@@ -693,7 +698,7 @@ public sealed class ModernRuntimePresentation
             case SessionPageKind.ProbingEndpoint:
                 facts.Add(new ModernInfoRow("网卡", adapter));
                 facts.Add(new ModernInfoRow("地址来源", viewModel.CandidateSourceText));
-                facts.Add(new ModernInfoRow("验证范围", "Ping · HTTPS · HTTP"));
+                facts.Add(new ModernInfoRow("验证范围", "Ping · TCP 443 · TCP 80"));
                 break;
             case SessionPageKind.EndpointReachable:
                 facts.Add(new ModernInfoRow("设备地址", viewModel.DiscoveredIp));

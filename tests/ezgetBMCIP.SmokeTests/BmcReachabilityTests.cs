@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,22 +10,112 @@ internal static class BmcReachabilityTests
     public static async Task RunAllAsync()
     {
         ResultSemanticsAreIndependentFromWebContent();
-        await LoopbackProbeUsesTheBoundedWindowAsync();
+        await DelayedHttpsWinsOverEarlyHttpAsync();
+        await HttpOnlyUsesTheFullWindowAsync();
+        await PingOnlyUsesTheFullWindowWithoutInventingAUrlAsync();
+        await UnreachableUsesTheBoundedWindowAsync();
+        await ImmediateHttpsFinishesEarlyAsync();
         await CancellationStopsProbeAsync();
         await RetainedAddressRaceCarriesReachabilityAsync();
     }
 
-    private static async Task LoopbackProbeUsesTheBoundedWindowAsync()
+    private static async Task DelayedHttpsWinsOverEarlyHttpAsync()
     {
-        var result = await BmcReachabilityProbe.ProbeAsync(
-            IPAddress.Loopback,
-            IPAddress.Loopback,
-            CancellationToken.None);
+        var requests = new List<(bool Ping, bool Https, bool Http)>();
+        var logs = new List<string>();
+        var result = await RunScriptedProbeAsync(
+            TimeSpan.FromMilliseconds(250),
+            (attempt, probePing, probeHttps, probeHttp) =>
+            {
+                requests.Add((probePing, probeHttps, probeHttp));
+                return new BmcReachabilityProbe.AttemptResult
+                {
+                    HttpPortOpen = attempt == 1,
+                    HttpsPortOpen = attempt >= 2
+                };
+            },
+            logs.Add);
 
-        Assert(result.IsReachable && result.PingSucceeded,
-            "Loopback reachability probe did not observe the expected ICMP response.");
-        Assert(result.Elapsed <= TimeSpan.FromSeconds(5.5),
-            "Reachability probe exceeded its five-second overall window.");
+        Assert(result.HttpsPortOpen && result.HttpPortOpen &&
+               result.PreferredUrl == "https://10.77.77.100",
+            "A delayed HTTPS result did not replace the earlier HTTP fallback.");
+        Assert(requests.Count == 2 && !requests[1].Http,
+            "A successful HTTP probe was repeated instead of retaining cumulative evidence.");
+        Assert(logs.Exists(line => line.Contains("completionReason=https-detected", StringComparison.Ordinal)),
+            "The HTTPS completion reason was not logged.");
+    }
+
+    private static async Task HttpOnlyUsesTheFullWindowAsync()
+    {
+        var attempts = 0;
+        var logs = new List<string>();
+        var timeout = TimeSpan.FromMilliseconds(80);
+        var result = await RunScriptedProbeAsync(
+            timeout,
+            (attempt, probePing, probeHttps, probeHttp) =>
+            {
+                attempts++;
+                return new BmcReachabilityProbe.AttemptResult { HttpPortOpen = probeHttp };
+            },
+            logs.Add);
+
+        Assert(attempts > 1 && result.HttpPortOpen && !result.HttpsPortOpen &&
+               result.PreferredUrl == "http://10.77.77.100",
+            "HTTP-only evidence did not wait for later HTTPS before falling back.");
+        Assert(result.Elapsed >= TimeSpan.FromMilliseconds(60),
+            "HTTP-only probing returned before using the bounded preference window.");
+        Assert(logs.Exists(line => line.Contains("completionReason=deadline-http-fallback", StringComparison.Ordinal)),
+            "The HTTP fallback completion reason was not logged.");
+    }
+
+    private static async Task PingOnlyUsesTheFullWindowWithoutInventingAUrlAsync()
+    {
+        var attempts = 0;
+        var logs = new List<string>();
+        var result = await RunScriptedProbeAsync(
+            TimeSpan.FromMilliseconds(80),
+            (attempt, probePing, probeHttps, probeHttp) =>
+            {
+                attempts++;
+                return new BmcReachabilityProbe.AttemptResult { PingSucceeded = probePing };
+            },
+            logs.Add);
+
+        Assert(attempts > 1 && result.IsReachable && result.PingSucceeded &&
+               result.PreferredUrl == string.Empty,
+            "Ping-only evidence did not preserve the full port-probing window and empty URL.");
+        Assert(logs.Exists(line => line.Contains("completionReason=deadline-ping-only", StringComparison.Ordinal)),
+            "The Ping-only completion reason was not logged.");
+    }
+
+    private static async Task ImmediateHttpsFinishesEarlyAsync()
+    {
+        var attempts = 0;
+        var result = await RunScriptedProbeAsync(
+            TimeSpan.FromMilliseconds(250),
+            (attempt, probePing, probeHttps, probeHttp) =>
+            {
+                attempts++;
+                return new BmcReachabilityProbe.AttemptResult { HttpsPortOpen = true };
+            });
+
+        Assert(attempts == 1 && result.HttpsPortOpen && result.Elapsed < TimeSpan.FromMilliseconds(200),
+            "An immediate HTTPS result did not finish the probe promptly.");
+    }
+
+    private static async Task UnreachableUsesTheBoundedWindowAsync()
+    {
+        var logs = new List<string>();
+        var result = await RunScriptedProbeAsync(
+            TimeSpan.FromMilliseconds(80),
+            (attempt, probePing, probeHttps, probeHttp) => new BmcReachabilityProbe.AttemptResult(),
+            logs.Add);
+
+        Assert(!result.IsReachable && result.Elapsed >= TimeSpan.FromMilliseconds(60) &&
+               result.Elapsed < TimeSpan.FromMilliseconds(250),
+            "An unreachable result did not respect the bounded probe window.");
+        Assert(logs.Exists(line => line.Contains("completionReason=deadline-unreachable", StringComparison.Ordinal)),
+            "The unreachable completion reason was not logged.");
     }
 
     private static void ResultSemanticsAreIndependentFromWebContent()
@@ -114,6 +205,25 @@ internal static class BmcReachabilityTests
                ReferenceEquals(result.Reachability, expected),
             "The retained-address race did not carry lightweight reachability evidence.");
         await dhcpCancelled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+
+    private static Task<BmcReachabilityResult> RunScriptedProbeAsync(
+        TimeSpan timeout,
+        Func<int, bool, bool, bool, BmcReachabilityProbe.AttemptResult> script,
+        Action<string>? logger = null)
+    {
+        return BmcReachabilityProbe.ProbeCoreAsync(
+            IPAddress.Parse("10.77.77.100"),
+            IPAddress.Parse("10.77.77.1"),
+            CancellationToken.None,
+            logger,
+            timeout,
+            TimeSpan.FromMilliseconds(1),
+            (attempt, probePing, probeHttps, probeHttp, deadline, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return Task.FromResult(script(attempt, probePing, probeHttps, probeHttp));
+            });
     }
 
     private static void Assert(bool condition, string message)

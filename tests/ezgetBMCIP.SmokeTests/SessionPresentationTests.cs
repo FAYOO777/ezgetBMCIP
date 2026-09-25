@@ -395,11 +395,11 @@ internal static class SessionPresentationTests
         var flags = BindingFlags.Instance | BindingFlags.NonPublic;
         foreach (var testCase in new[]
         {
-            new { Ping = false, Https = false, Http = false, Title = "设备地址没有回应", Action = ModernActionKind.RetryEndpoint, Address = "10.77.77.100" },
-            new { Ping = true, Https = false, Http = false, Title = "设备地址有回应", Action = ModernActionKind.RetryEndpoint, Address = "10.77.77.100" },
-            new { Ping = false, Https = true, Http = false, Title = "HTTPS 已连接", Action = ModernActionKind.OpenManagementPage, Address = "https://10.77.77.100" },
-            new { Ping = false, Https = false, Http = true, Title = "HTTP 已连接", Action = ModernActionKind.OpenManagementPage, Address = "http://10.77.77.100" },
-            new { Ping = true, Https = true, Http = true, Title = "HTTPS 和 HTTP 均已连接", Action = ModernActionKind.OpenManagementPage, Address = "https://10.77.77.100" }
+            new { Ping = false, Https = false, Http = false, Title = "设备地址没有回应", Action = ModernActionKind.RetryEndpoint, Address = "10.77.77.100", ShowHttpsFallback = false, ShowHttpFallback = false },
+            new { Ping = true, Https = false, Http = false, Title = "设备地址有回应", Action = ModernActionKind.RetryEndpoint, Address = "10.77.77.100", ShowHttpsFallback = false, ShowHttpFallback = false },
+            new { Ping = false, Https = true, Http = false, Title = "TCP 443 端口可连接", Action = ModernActionKind.OpenManagementPage, Address = "https://10.77.77.100", ShowHttpsFallback = false, ShowHttpFallback = false },
+            new { Ping = false, Https = false, Http = true, Title = "TCP 80 端口可连接", Action = ModernActionKind.OpenManagementPage, Address = "http://10.77.77.100", ShowHttpsFallback = true, ShowHttpFallback = false },
+            new { Ping = true, Https = true, Http = true, Title = "TCP 443、80 端口均可连接", Action = ModernActionKind.OpenManagementPage, Address = "https://10.77.77.100", ShowHttpsFallback = false, ShowHttpFallback = true }
         })
         {
             var viewModel = new MainViewModel { AppPhase = AppPhase.FlowRunning };
@@ -430,10 +430,11 @@ internal static class SessionPresentationTests
                     : string.Empty;
             Assert(viewModel.DiscoveredIpUrl == expectedUrl,
                 "A management URL was exposed before a TCP management port was confirmed for " + testCase.Title + ".");
-            Assert(testCase.Https && testCase.Http
-                ? presentation.ShowOtherEndpointActions
-                : !presentation.ShowOtherEndpointActions,
-                "Modern endpoint alternate actions were not limited to dual-port success.");
+            Assert(presentation.ShowHttpsFallbackAction == testCase.ShowHttpsFallback &&
+                   presentation.ShowHttpFallbackAction == testCase.ShowHttpFallback &&
+                   presentation.ShowOtherEndpointActions ==
+                       (testCase.ShowHttpsFallback || testCase.ShowHttpFallback),
+                "Modern endpoint alternate actions did not match the detected management ports.");
         }
     }
 

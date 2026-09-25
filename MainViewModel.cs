@@ -1138,14 +1138,14 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IRuntimePres
             if (reachability is not null)
             {
                 if (reachability.HttpsPortOpen && reachability.HttpPortOpen)
-                    return "HTTPS 和 HTTP 已连接。";
+                    return "TCP 443、80 端口均可连接。";
                 if (reachability.HttpsPortOpen)
-                    return "HTTPS 已连接。";
+                    return "TCP 443 端口可连接，将优先使用 HTTPS。";
                 if (reachability.HttpPortOpen)
-                    return "HTTP 已连接。";
+                    return "TCP 80 端口可连接，将使用 HTTP。";
                 if (reachability.PingSucceeded)
-                    return (DiscoveredIp ?? reachability.TargetAddress.ToString()) + " 可以 Ping 通。HTTPS 和 HTTP 未连接。";
-                return "没有收到 Ping、HTTPS 或 HTTP 的成功响应。";
+                    return (DiscoveredIp ?? reachability.TargetAddress.ToString()) + " 可以 Ping 通。TCP 443 和 TCP 80 未连接。";
+                return "没有收到 Ping、TCP 443 或 TCP 80 的成功响应。";
             }
 
             var evidence = _lastEndpointProbeEvidence;
@@ -1430,8 +1430,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IRuntimePres
         cancellationToken.ThrowIfCancellationRequested();
         IsEndpointProbeRunning = true;
         BeginEndpointProbe();
-        EndpointStatusText = "正在检查 Ping、HTTPS 和 HTTP 连接。";
-        SetStep(3, StepState.Active, "正在检查 Ping、HTTPS 和 HTTP 连接。");
+        EndpointStatusText = "正在检查 Ping、TCP 443 和 TCP 80。";
+        SetStep(3, StepState.Active, "正在检查 Ping、TCP 443 和 TCP 80。");
         SetBusy("正在检查管理页面…", "设备地址：" + ipAddress);
         StartEllipsis();
 
@@ -1475,7 +1475,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IRuntimePres
             EndpointStatusText = "设备地址没有回应。";
             SetStep(3, StepState.Pending, "设备地址没有回应。");
             StatusText = "设备地址没有回应";
-            DetailText = "没有收到 Ping、HTTPS 或 HTTP 的成功响应。";
+            DetailText = "没有收到 Ping、TCP 443 或 TCP 80 的成功响应。";
             BadgeState = StepState.Pending;
             BadgeText = "等待确认";
             ActivityText = "可以重新检测。";
@@ -1486,12 +1486,12 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IRuntimePres
         PreferredBmcScheme = reachability.PreferredScheme;
         SetWorkflowState(DiscoveryWorkflowState.EndpointReachable);
         var transport = reachability.HttpsPortOpen && reachability.HttpPortOpen
-            ? "HTTPS 和 HTTP 已连接。"
+            ? "TCP 443、80 端口均可连接，将优先使用 HTTPS。"
             : reachability.HttpsPortOpen
-                ? "HTTPS 已连接。"
+                ? "TCP 443 端口可连接，将优先使用 HTTPS。"
                 : reachability.HttpPortOpen
-                    ? "HTTP 已连接。"
-                    : (ipAddress + " 可以 Ping 通。HTTPS 和 HTTP 未连接。");
+                    ? "TCP 80 端口可连接，将使用 HTTP。"
+                    : (ipAddress + " 可以 Ping 通。TCP 443 和 TCP 80 未连接。");
         EndpointStatusText = transport;
         LogInfo("BMC address reachable: ip=" + ipAddress +
             " ping=" + reachability.PingSucceeded +

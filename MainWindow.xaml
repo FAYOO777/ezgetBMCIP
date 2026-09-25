@@ -832,8 +832,12 @@
                                 <Expander Header="其他方式" FontSize="12" Margin="0,2,0,0"
                                           Visibility="{Binding ModernRuntime.ShowOtherEndpointActions, Converter={StaticResource BoolToVis}}">
                                     <WrapPanel Margin="0,8,0,0">
+                                        <ui:Button Content="尝试 HTTPS" Command="{Binding OpenHttpsCommand}"
+                                                   Appearance="Secondary" Height="36" Padding="14,0" Margin="0,0,8,8"
+                                                   Visibility="{Binding ModernRuntime.ShowHttpsFallbackAction, Converter={StaticResource BoolToVis}}" />
                                         <ui:Button Content="改用 HTTP" Command="{Binding OpenHttpCommand}"
-                                                   Appearance="Secondary" Height="36" Padding="14,0" Margin="0,0,8,8" />
+                                                   Appearance="Secondary" Height="36" Padding="14,0" Margin="0,0,8,8"
+                                                   Visibility="{Binding ModernRuntime.ShowHttpFallbackAction, Converter={StaticResource BoolToVis}}" />
                                     </WrapPanel>
                                 </Expander>
 

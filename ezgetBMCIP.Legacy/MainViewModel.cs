@@ -180,14 +180,14 @@ namespace EzGetBmcIp.Legacy
                 if (reachability != null)
                 {
                     if (reachability.HttpsPortOpen && reachability.HttpPortOpen)
-                        return "HTTPS 和 HTTP 已连接。";
+                        return "TCP 443、80 端口均可连接。";
                     if (reachability.HttpsPortOpen)
-                        return "HTTPS 已连接。";
+                        return "TCP 443 端口可连接，将优先使用 HTTPS。";
                     if (reachability.HttpPortOpen)
-                        return "HTTP 已连接。";
+                        return "TCP 80 端口可连接，将使用 HTTP。";
                     if (reachability.PingSucceeded)
-                        return (DiscoveredIp ?? reachability.TargetAddress.ToString()) + " 可以 Ping 通。HTTPS 和 HTTP 未连接。";
-                    return "没有收到 Ping、HTTPS 或 HTTP 的成功响应。";
+                        return (DiscoveredIp ?? reachability.TargetAddress.ToString()) + " 可以 Ping 通。TCP 443 和 TCP 80 未连接。";
+                    return "没有收到 Ping、TCP 443 或 TCP 80 的成功响应。";
                 }
 
                 var evidence = _lastEndpointProbeEvidence;
@@ -1292,10 +1292,10 @@ namespace EzGetBmcIp.Legacy
             cancellationToken.ThrowIfCancellationRequested();
             IsEndpointProbeRunning = true;
             BeginEndpointProbe();
-            EndpointStatusText = "正在检查 Ping、HTTPS 和 HTTP 连接。";
+            EndpointStatusText = "正在检查 Ping、TCP 443 和 TCP 80。";
             StatusText = "正在检查管理页面…";
             DetailText = "设备地址：" + ipAddress;
-            ActivityText = "正在检查 Ping、HTTPS 和 HTTP 连接。";
+            ActivityText = "正在检查 Ping、TCP 443 和 TCP 80。";
             BadgeText = "处理中";
             BadgeColor = "#0078D4";
 
@@ -1338,7 +1338,7 @@ namespace EzGetBmcIp.Legacy
                 PreferredBmcScheme = "https";
                 EndpointStatusText = "设备地址没有回应。";
                 StatusText = "设备地址没有回应";
-                DetailText = "没有收到 Ping、HTTPS 或 HTTP 的成功响应。";
+                DetailText = "没有收到 Ping、TCP 443 或 TCP 80 的成功响应。";
                 ActivityText = "可以重新检测。";
                 BadgeText = "等待确认";
                 BadgeColor = "#8A6D1D";
@@ -1349,12 +1349,12 @@ namespace EzGetBmcIp.Legacy
             SetWorkflowState(DiscoveryWorkflowState.EndpointReachable);
             var hasManagementPort = reachability.HttpsPortOpen || reachability.HttpPortOpen;
             var transport = reachability.HttpsPortOpen && reachability.HttpPortOpen
-                ? "HTTPS 和 HTTP 已连接。"
+                ? "TCP 443、80 端口均可连接，将优先使用 HTTPS。"
                 : reachability.HttpsPortOpen
-                    ? "HTTPS 已连接。"
+                    ? "TCP 443 端口可连接，将优先使用 HTTPS。"
                     : reachability.HttpPortOpen
-                        ? "HTTP 已连接。"
-                        : (ipAddress + " 可以 Ping 通。HTTPS 和 HTTP 未连接。");
+                        ? "TCP 80 端口可连接，将使用 HTTP。"
+                        : (ipAddress + " 可以 Ping 通。TCP 443 和 TCP 80 未连接。");
             EndpointStatusText = transport;
             Log("BMC address reachable: ip=" + ipAddress +
                 " ping=" + reachability.PingSucceeded +

@@ -1956,7 +1956,7 @@ internal static class Program
                 vm.SessionState.Network = NetworkLifecycleState.TemporaryConfigurationActive;
                 typeof(MainViewModel).GetMethod("NotifySessionStateChanged", BindingFlags.Instance | BindingFlags.NonPublic)!
                     .Invoke(vm, null);
-                vm.EndpointStatusText = "没有收到 Ping、HTTPS 或 HTTP 的成功响应。";
+                vm.EndpointStatusText = "没有收到 Ping、TCP 443 或 TCP 80 的成功响应。";
                 vm.AdapterCardLine1 = "测试网卡 - 直连 BMC 管理口";
                 vm.CurrentStepIndex = 3;
                 vm.BadgeState = StepState.Pending;
