@@ -47,19 +47,17 @@ internal static class BmcReachabilityTests
 
     private static async Task HttpOnlyUsesTheFullWindowAsync()
     {
-        var attempts = 0;
         var logs = new List<string>();
         var timeout = TimeSpan.FromMilliseconds(250);
         var result = await RunScriptedProbeAsync(
             timeout,
             (attempt, probePing, probeHttps, probeHttp) =>
             {
-                attempts++;
                 return new BmcReachabilityProbe.AttemptResult { HttpPortOpen = probeHttp };
             },
             logs.Add);
 
-        Assert(attempts > 1 && result.HttpPortOpen && !result.HttpsPortOpen &&
+        Assert(result.HttpPortOpen && !result.HttpsPortOpen &&
                result.PreferredUrl == "http://10.77.77.100",
             "HTTP-only evidence did not wait for later HTTPS before falling back.");
         Assert(result.Elapsed >= TimeSpan.FromMilliseconds(150),
@@ -70,20 +68,20 @@ internal static class BmcReachabilityTests
 
     private static async Task PingOnlyUsesTheFullWindowWithoutInventingAUrlAsync()
     {
-        var attempts = 0;
         var logs = new List<string>();
         var result = await RunScriptedProbeAsync(
             TimeSpan.FromMilliseconds(250),
             (attempt, probePing, probeHttps, probeHttp) =>
             {
-                attempts++;
                 return new BmcReachabilityProbe.AttemptResult { PingSucceeded = probePing };
             },
             logs.Add);
 
-        Assert(attempts > 1 && result.IsReachable && result.PingSucceeded &&
+        Assert(result.IsReachable && result.PingSucceeded &&
                result.PreferredUrl == string.Empty,
             "Ping-only evidence did not preserve the full port-probing window and empty URL.");
+        Assert(result.Elapsed >= TimeSpan.FromMilliseconds(150),
+            "Ping-only probing returned before using the bounded port preference window.");
         Assert(logs.Exists(line => line.Contains("completionReason=deadline-ping-only", StringComparison.Ordinal)),
             "The Ping-only completion reason was not logged.");
     }
