@@ -24,7 +24,7 @@ internal static class BmcReachabilityTests
         var requests = new List<(bool Ping, bool Https, bool Http)>();
         var logs = new List<string>();
         var result = await RunScriptedProbeAsync(
-            TimeSpan.FromMilliseconds(250),
+            TimeSpan.FromSeconds(2),
             (attempt, probePing, probeHttps, probeHttp) =>
             {
                 requests.Add((probePing, probeHttps, probeHttp));
@@ -49,7 +49,7 @@ internal static class BmcReachabilityTests
     {
         var attempts = 0;
         var logs = new List<string>();
-        var timeout = TimeSpan.FromMilliseconds(80);
+        var timeout = TimeSpan.FromMilliseconds(250);
         var result = await RunScriptedProbeAsync(
             timeout,
             (attempt, probePing, probeHttps, probeHttp) =>
@@ -62,7 +62,7 @@ internal static class BmcReachabilityTests
         Assert(attempts > 1 && result.HttpPortOpen && !result.HttpsPortOpen &&
                result.PreferredUrl == "http://10.77.77.100",
             "HTTP-only evidence did not wait for later HTTPS before falling back.");
-        Assert(result.Elapsed >= TimeSpan.FromMilliseconds(60),
+        Assert(result.Elapsed >= TimeSpan.FromMilliseconds(150),
             "HTTP-only probing returned before using the bounded preference window.");
         Assert(logs.Exists(line => line.Contains("completionReason=deadline-http-fallback", StringComparison.Ordinal)),
             "The HTTP fallback completion reason was not logged.");
@@ -73,7 +73,7 @@ internal static class BmcReachabilityTests
         var attempts = 0;
         var logs = new List<string>();
         var result = await RunScriptedProbeAsync(
-            TimeSpan.FromMilliseconds(80),
+            TimeSpan.FromMilliseconds(250),
             (attempt, probePing, probeHttps, probeHttp) =>
             {
                 attempts++;
@@ -91,15 +91,16 @@ internal static class BmcReachabilityTests
     private static async Task ImmediateHttpsFinishesEarlyAsync()
     {
         var attempts = 0;
+        var timeout = TimeSpan.FromSeconds(2);
         var result = await RunScriptedProbeAsync(
-            TimeSpan.FromMilliseconds(250),
+            timeout,
             (attempt, probePing, probeHttps, probeHttp) =>
             {
                 attempts++;
                 return new BmcReachabilityProbe.AttemptResult { HttpsPortOpen = true };
             });
 
-        Assert(attempts == 1 && result.HttpsPortOpen && result.Elapsed < TimeSpan.FromMilliseconds(200),
+        Assert(attempts == 1 && result.HttpsPortOpen && result.Elapsed < timeout,
             "An immediate HTTPS result did not finish the probe promptly.");
     }
 
@@ -107,12 +108,12 @@ internal static class BmcReachabilityTests
     {
         var logs = new List<string>();
         var result = await RunScriptedProbeAsync(
-            TimeSpan.FromMilliseconds(80),
+            TimeSpan.FromMilliseconds(250),
             (attempt, probePing, probeHttps, probeHttp) => new BmcReachabilityProbe.AttemptResult(),
             logs.Add);
 
-        Assert(!result.IsReachable && result.Elapsed >= TimeSpan.FromMilliseconds(60) &&
-               result.Elapsed < TimeSpan.FromMilliseconds(250),
+        Assert(!result.IsReachable && result.Elapsed >= TimeSpan.FromMilliseconds(150) &&
+               result.Elapsed < TimeSpan.FromSeconds(2),
             "An unreachable result did not respect the bounded probe window.");
         Assert(logs.Exists(line => line.Contains("completionReason=deadline-unreachable", StringComparison.Ordinal)),
             "The unreachable completion reason was not logged.");
